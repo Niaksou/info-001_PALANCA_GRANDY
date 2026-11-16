@@ -1045,6 +1045,574 @@ Le navigateur et OpenSSL donnent donc la même vision du certificat. Le navigate
 
 ## 6. Mise en place d'une PKI
 
+### 6.1 Présentation de la PKI
+
+La PKI reproduit, à petite échelle, la structure observée à la section 5 :
+
+```text
+Root Lorne                    (CA racine, gérée par l'enseignant)
+   └── RA palancac            (ma CA intermédiaire, signée par Root Lorne)
+          └── www.palancac.fr (certificat du serveur web, signé par RA palancac)
+```
+
+| Niveau           | Distinguished Name                                              | Équivalent à la section 5   |
+| ---------------- | --------------------------------------------------------------- | --------------------------- |
+| CA racine        | `C=FR, ST=Savoie, L=Chambery, O=TP Sécurité, CN=Root Lorne`     | HARICA TLS RSA Root CA 2021 |
+| CA intermédiaire | `C=FR, ST=Savoie, L=Chambery, O=TP Sécurité, CN=RA palancac`    | GEANT TLS RSA 1             |
+| Serveur          | `CN=www.palancac.fr`, entreprise « Canut palancac inc. » à Lyon | `*.univ-grenoble-alpes.fr`  |
+
+Bien qu'elle s'appelle « racine », `Root Lorne` n'est présente dans aucun magasin de confiance. Il faudra donc l'ajouter manuellement sur les clients pour qu'ils acceptent les certificats de cette PKI.
+
+### 6.2 Étude de la CA racine (CN=Root Lorne)
+
+La CA racine est installée par l'enseignant sur une machine dédiée (`root-ca-tp`, `192.168.170.231`). Je m'y suis connecté en SSH depuis `tls-ca-palancac` avec le compte `camanager` fourni dans le sujet :
+
+```bash
+ssh camanager@192.168.170.231
+```
+
+#### Contenu du dossier de la CA
+
+```console
+[camanager@root-ca-tp ca]$ ls -la
+total 48
+drwxr-xr-x. 7 camanager camanager 4096 Nov 16 10:05 .
+drwx------. 6 camanager camanager 4096 Nov 16 10:12 ..
+drwxr-xr-x. 2 camanager camanager 4096 Nov 16 09:47 certs
+drwxr-xr-x. 2 camanager camanager    6 Nov  1  2025 crl
+drwxr-xr-x. 2 camanager camanager 4096 Nov 16 09:46 csr
+-rw-r--r--. 1 camanager camanager 3062 Nov 16 09:47 index.txt
+-rw-r--r--. 1 camanager camanager   21 Nov 16 09:47 index.txt.attr
+-rw-r--r--. 1 camanager camanager   21 Nov 16 09:47 index.txt.attr.old
+-rw-r--r--. 1 camanager camanager 3062 Nov 16 09:47 index.txt.old
+drwxr-xr-x. 2 camanager camanager 4096 Nov 16 09:47 newcerts
+-rw-r--r--. 1 camanager camanager 3728 Nov  2  2025 openssl.cnf
+drwx------. 2 camanager camanager   24 Nov 12  2025 private
+-rw-r--r--. 1 camanager camanager    5 Nov 16 09:47 serial
+-rw-r--r--. 1 camanager camanager    5 Nov 16 09:47 serial.old
+[camanager@root-ca-tp ca]$ ls -la */
+certs/:
+-rw-r--r--. 1 camanager camanager 1216 Nov 10  2025 abranteg.cert.pem
+[...]
+-rw-r--r--. 1 camanager camanager  818 Nov 12  2025 ca.cert.pem
+[...]
+csr/:
+-rw-r--r--. 1 camanager camanager 1346 Nov 10  2025 abranteg.csr.pem
+[...]
+newcerts/:
+-rw-r--r--. 1 camanager camanager 1216 Nov  2  2025 1000.pem
+-rw-r--r--. 1 camanager camanager 1216 Nov 10  2025 1001.pem
+[...]
+-rw-r--r--. 1 camanager camanager  769 Nov 16 09:47 101F.pem
+
+private/:
+-r--------. 1 camanager camanager  314 Nov 12  2025 ca.key.pem
+```
+
+Les listes de `certs/`, `csr/` et `newcerts/` ont été raccourcies : elles contiennent les fichiers des autres étudiants.
+
+Chaque élément a un rôle précis dans le fonctionnement de la CA :
+
+| Élément              | Rôle                                                                                                                               |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `openssl.cnf`        | Configuration de la CA : emplacement des fichiers, durées, politiques et extensions                                                |
+| `private/ca.key.pem` | Clé privée de la CA. Le dossier est en `700` et le fichier en `400` : seul `camanager` peut le lire                                |
+| `certs/`             | Certificats délivrés, dont celui de la CA elle-même (`ca.cert.pem`) et ceux des CA intermédiaires des étudiants (`login.cert.pem`) |
+| `csr/`               | Demandes de certificat (_Certificate Signing Request_) déposées par les étudiants                                                  |
+| `newcerts/`          | Copie de chaque certificat signé, nommée d'après son numéro de série (`1000.pem` à `101F.pem`, soit 32 certificats délivrés)       |
+| `index.txt`          | Base de données de la CA : une ligne par certificat délivré (état valide ou révoqué, date d'expiration, numéro de série, sujet)    |
+| `serial`             | Prochain numéro de série à attribuer, en hexadécimal. Chaque certificat doit avoir un numéro unique                                |
+| `crl/`               | Listes de révocation (vide : aucune CRL n'a encore été publiée)                                                                    |
+| `*.old`              | Sauvegardes automatiques faites par `openssl ca` avant chaque modification de la base                                              |
+
+#### Fichier de configuration `openssl.cnf`
+
+Les concepteurs d'OpenSSL fournissent, avec la commande `openssl ca`, de quoi gérer une « petite » autorité de certification. Ses paramètres sont regroupés dans `openssl.cnf`. Voici les lignes qui nous intéressent :
+
+```console
+[camanager@root-ca-tp ca]$ grep -nE "^\s*(dir|certificate|private_key|policy)\s*=" openssl.cnf
+9:dir = /home/camanager/ca
+17:private_key = $dir/private/ca.key.pem
+18:certificate = $dir/certs/ca.cert.pem
+30:policy = policy_strict
+```
+
+La section `[ ca ]` indique que la CA par défaut est `CA_default`. Dans cette section, `dir` contient le répertoire racine de la CA, et les autres chemins sont construits à partir de lui : le certificat de la CA est donc `/home/camanager/ca/certs/ca.cert.pem` et sa clé privée `/home/camanager/ca/private/ca.key.pem`.
+
+Le fichier définit aussi plusieurs jeux d'extensions, appliqués selon le type de certificat à signer :
+
+| Section                  | Utilisée pour              | Extensions principales                                                             |
+| ------------------------ | -------------------------- | ---------------------------------------------------------------------------------- |
+| `[ v3_ca ]`              | Le certificat de la racine | `CA:true`, `keyCertSign`, `cRLSign`                                                |
+| `[ v3_intermediate_ca ]` | Les CA intermédiaires      | `CA:true, pathlen:0`, `keyCertSign`, `cRLSign`                                     |
+| `[ server_cert ]`        | Les certificats de serveur | `CA:FALSE`, `digitalSignature`, `keyEncipherment`, `extendedKeyUsage = serverAuth` |
+| `[ usr_cert ]`           | Les certificats de client  | `CA:FALSE`, `extendedKeyUsage = clientAuth, emailProtection`                       |
+
+On retrouve exactement les extensions observées sur la chaîne de l'université : `pathlen:0` comme `GEANT TLS RSA 1`, `CA:FALSE` et `serverAuth` comme le certificat du serveur.
+
+#### Certificat de la CA racine
+
+La ligne `certificate` donne l'emplacement du certificat, que l'on affiche avec `openssl x509` :
+
+```console
+[camanager@root-ca-tp ca]$ openssl x509 -in certs/ca.cert.pem -noout -text
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number:
+            03:3f:2e:7e:15:1a:53:7a:94:f5:59:85:fe:4b:48:49:c8:88:b2:ee
+        Signature Algorithm: ecdsa-with-SHA256
+        Issuer: C=FR, ST=Savoie, L=ChambÃ©ry, O=TP SÃ©curitÃ©, CN=Root Lorne
+        Validity
+            Not Before: Nov 12 12:43:56 2025 GMT
+            Not After : Nov  7 12:43:56 2045 GMT
+        Subject: C=FR, ST=Savoie, L=ChambÃ©ry, O=TP SÃ©curitÃ©, CN=Root Lorne
+        Subject Public Key Info:
+            Public Key Algorithm: id-ecPublicKey
+                Public-Key: (256 bit)
+                pub:
+                    04:23:f4:3f:da:7f:59:3d:b1:a9:b0:8b:94:9b:3a:
+                    ee:7f:b9:ac:05:84:fc:32:f1:ee:df:ff:e3:b2:86:
+                    a7:14:f1:75:4a:de:d6:05:91:58:56:61:0a:ba:c9:
+                    45:c2:15:50:22:d6:f1:3e:bd:6d:9b:ac:11:57:39:
+                    64:5f:15:bd:fd
+                ASN1 OID: prime256v1
+                NIST CURVE: P-256
+        X509v3 extensions:
+            X509v3 Subject Key Identifier:
+                85:44:BC:D9:48:94:58:B7:90:E3:B0:65:31:CC:2C:23:2C:8F:5F:80
+            X509v3 Authority Key Identifier:
+                85:44:BC:D9:48:94:58:B7:90:E3:B0:65:31:CC:2C:23:2C:8F:5F:80
+            X509v3 Basic Constraints: critical
+                CA:TRUE
+            X509v3 Key Usage: critical
+                Digital Signature, Certificate Sign, CRL Sign
+    Signature Algorithm: ecdsa-with-SHA256
+    Signature Value:
+        30:44:02:20:22:49:af:ef:00:1f:8f:83:21:45:6c:48:26:c5:
+        2b:10:92:ac:36:81:7f:68:8b:c5:40:42:73:08:b3:11:19:ba:
+        02:20:05:4e:78:5a:14:85:5d:71:65:93:42:cd:4d:37:db:bb:
+        e3:2e:37:08:24:73:9d:43:32:01:78:a5:fd:ce:eb:10
+```
+
+Les accents du nom s'affichent mal (`ChambÃ©ry`, `TP SÃ©curitÃ©`) : c'est le symptôme classique d'un texte UTF-8 encodé deux fois. Le « é » (octets `C3 A9`) a été relu comme deux caractères Latin-1, « Ã » et « © », puis réencodé en UTF-8. Ce défaut d'encodage vient de la création du certificat de la racine ou de l'affichage, et ne change rien à la validité cryptographique du certificat.
+
+### Question 20
+
+> _Quel est le type de clé utilisée ? Quelle est la taille de la clé ? Quelle courbe est utilisée ? Quelle est la durée de validité ? Qu'est-ce qui vous permet de dire qu'il s'agit d'un certificat « racine » ou auto-signé ? Pour quels « X509v3 Key Usage » cette autorité de certification peut-elle être utilisée ?_
+
+**Type de clé :** une clé à **courbe elliptique** (`Public Key Algorithm: id-ecPublicKey`), et non une clé RSA comme dans la chaîne de l'université. Le certificat est d'ailleurs signé en **ECDSA** (`ecdsa-with-SHA256`) : le haché SHA-256 du certificat est signé avec l'algorithme de signature sur courbe elliptique.
+
+**Taille de la clé :** **256 bits** (`Public-Key: (256 bit)`). C'est beaucoup moins que les 4096 bits de la racine HARICA, pour un niveau de sécurité comparable : une clé EC de 256 bits offre une sécurité d'environ 128 bits, équivalente à une clé RSA de 3072 bits. La sécurité des courbes elliptiques repose sur le problème du logarithme discret sur une courbe, pour lequel on ne connaît pas d'algorithme aussi efficace que ceux qui factorisent les modules RSA. Les clés et les signatures sont donc bien plus courtes : la signature n'occupe ici que 70 octets, contre 384 octets pour la signature RSA de la question 16.
+
+La clé publique `pub` est un point de la courbe. Le premier octet, `04`, indique qu'il est donné sous forme non compressée, suivi de ses deux coordonnées x et y de 32 octets chacune (65 octets au total).
+
+**Courbe utilisée :** `prime256v1`, appelée **P-256** par le NIST (`NIST CURVE: P-256`) et `secp256r1` dans d'autres normes. C'est la courbe la plus utilisée en TLS.
+
+**Durée de validité :** du **12 novembre 2025** au **7 novembre 2045**, soit **20 ans** (7300 jours). Comme vu à la question 19, une racine a une durée de vie très longue, car la remplacer oblige à mettre à jour tous les clients qui lui font confiance.
+
+**Certificat racine auto-signé :** plusieurs éléments le montrent :
+
+- **Le sujet et l'émetteur sont identiques** (`C=FR, ST=Savoie, L=Chambéry, O=TP Sécurité, CN=Root Lorne`) : la CA a signé son propre certificat.
+- **Le _Subject Key Identifier_ et l'_Authority Key Identifier_ sont égaux** (`85:44:BC:D9:…:5F:80`) : la clé qui a signé le certificat est celle qu'il contient. Contrairement à la racine HARICA de la question 19, l'AKI est présent ici. La section `[ v3_ca ]` du fichier de configuration l'ajoute systématiquement (`authorityKeyIdentifier = keyid:always,issuer`).
+- **`Basic Constraints` vaut `CA:TRUE` sans `pathlen`** : c'est une autorité de certification, sans limite sur le nombre de niveaux en dessous d'elle.
+
+**_Key Usage_ autorisés :** `Digital Signature, Certificate Sign, CRL Sign`. La CA peut donc :
+
+- **`Certificate Sign`** : signer des certificats, ici ceux des CA intermédiaires des étudiants ;
+- **`CRL Sign`** : signer des listes de révocation ;
+- **`Digital Signature`** : produire des signatures numériques sur d'autres données, par exemple des réponses OCSP.
+
+L'extension est marquée `critical` : un logiciel qui ne la comprend pas doit refuser le certificat plutôt que de l'ignorer.
+
+#### Clé privée de la CA racine
+
+La ligne `private_key` du fichier de configuration localise la clé privée. Comme elle est chiffrée, la passphrase fournie dans le sujet est demandée pour l'afficher avec `openssl ec` :
+
+```console
+[camanager@root-ca-tp ca]$ openssl ec -in private/ca.key.pem -noout -text | head -3
+read EC key
+Enter pass phrase for private/ca.key.pem:
+Private-Key: (256 bit)
+priv:
+    [masqué]
+```
+
+Seul le début de la sortie a été affiché (`head -3`), et la valeur `priv` a été masquée : c'est un nombre de 256 bits qui permettrait de signer des certificats au nom de `Root Lorne`. On y lit que c'est bien une clé EC de 256 bits, comme annoncé par le certificat. La sortie complète contient aussi la partie publique `pub` et le nom de la courbe. Le fichier ne fait que 314 octets, contre plus de 1000 pour une clé RSA de 3072 bits, ce qui illustre à nouveau la compacité des courbes elliptiques.
+
+#### Politique de signature
+
+La ligne `policy = policy_strict` désigne la politique appliquée aux demandes de certificat. Le fichier en définit deux :
+
+```console
+[camanager@root-ca-tp ca]$ sed -n '/\[ policy_strict \]/,/^$/p;/\[ policy_loose \]/,/^$/p' openssl.cnf
+[ policy_strict ]
+# The root CA should only sign intermediate certificates that match.
+# See the POLICY FORMAT section of `man ca`.
+countryName = match
+stateOrProvinceName = match
+organizationName = match
+organizationalUnitName = optional
+commonName = supplied
+emailAddress = optional
+
+[ policy_loose ]
+# Allow the intermediate CA to sign a more diverse range of certificates.
+# See the POLICY FORMAT section of the `ca` man page.
+countryName = optional
+stateOrProvinceName = optional
+localityName = optional
+organizationName = optional
+organizationalUnitName = optional
+commonName = supplied
+emailAddress = optional
+```
+
+| Valeur     | Signification                                            |
+| ---------- | -------------------------------------------------------- |
+| `match`    | Le champ doit être présent et identique à celui de la CA |
+| `supplied` | Le champ doit être présent, avec une valeur quelconque   |
+| `optional` | Le champ peut être absent                                |
+
+Avec `policy_strict`, la racine n'accepte de signer que les demandes dont le pays (`C=FR`), la région (`ST=Savoie`) et l'organisation (`O=TP Sécurité`) sont **identiques aux siens**. C'est logique : les CA intermédiaires doivent appartenir à la même organisation que la racine. La ville (`L`) n'est pas contrôlée, ce qui explique que la racine s'appelle `Chambéry` alors que le sujet impose `Chambery` aux intermédiaires.
+
+La politique `policy_loose`, qui n'impose que le `commonName`, est destinée aux CA intermédiaires : elles doivent pouvoir signer les certificats de serveurs appartenant à d'autres organisations, comme « Canut palancac inc. » à Lyon.
+
+### 6.3 Création d'une autorité de certification intermédiaire
+
+Cette partie met en place, sur la machine `tls-ca-palancac`, ma propre CA intermédiaire `RA palancac`. Elle servira ensuite à délivrer les certificats des serveurs. La mise en place se fait en trois étapes :
+
+1. création de la bi-clé de la CA ;
+2. création d'une demande de certificat (CSR) ;
+3. signature de cette demande par la CA racine `Root Lorne`.
+
+Comme pour la racine, la CA est gérée avec `openssl ca` et décrite par un fichier `openssl.cnf`. L'enseignant en fournit une version préconfigurée, que j'ai téléchargée dans le dossier `/home/etudiant/ca` :
+
+```console
+[etudiant@tls-ca-palancac ~]$ mkdir -p ~/ca && cd ~/ca
+[etudiant@tls-ca-palancac ca]$ curl -fO http://192.168.176.2/etrs713/TP-TLS/openssl.interm.cnf
+100  3961  100  3961    0     0  2320k      0 --:--:-- --:--:-- --:--:-- 3868k
+[etudiant@tls-ca-palancac ca]$ mv openssl.interm.cnf openssl.cnf
+[etudiant@tls-ca-palancac ca]$ grep -nE "^\s*(dir|private_key|certificate|policy)\s*=" openssl.cnf
+9:dir = /root/ca/intermediate
+17:private_key = $dir/private/intermediate.key.pem
+18:certificate = $dir/certs/intermediate.cert.pem
+30:policy = policy_loose
+```
+
+Le fichier est presque identique à celui de la racine, avec trois différences importantes :
+
+| Paramètre                                      | Racine (`Root Lorne`) | Intermédiaire (`RA palancac`)       | Conséquence                                                                                                         |
+| ---------------------------------------------- | --------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `policy`                                       | `policy_strict`       | `policy_loose`                      | Ma CA pourra signer des certificats pour d'autres organisations (`Canut palancac inc.`), seul le CN est obligatoire |
+| `copy_extensions`                              | absent                | `copy`                              | Les extensions demandées dans la CSR (notamment le `subjectAltName`) sont recopiées dans le certificat              |
+| `authorityInfoAccess` (dans `[ server_cert ]`) | absent                | `OCSP;URI:http://ocsp2.example.com` | Les certificats de serveur indiqueront une adresse OCSP. C'est une valeur d'exemple : aucun serveur OCSP n'y répond |
+
+`copy_extensions = copy` est pratique, mais demande de la prudence. Une extension déjà définie par la section utilisée pour la signature (par exemple `basicConstraints = CA:FALSE` dans `[ server_cert ]`) n'est pas remplacée par celle de la CSR. En revanche, toute extension demandée qui n'est pas définie dans cette section sera recopiée telle quelle. Il faut donc toujours relire une demande avant de la signer.
+
+### Question 21
+
+> _Quelle valeur avez-vous mise dans le paramètre `dir` de la section `CA_default` ? Dans quel dossier et sous quel nom la clé privée de la CA devra-t-elle être stockée ? Dans quel dossier et sous quel nom le certificat de la CA devra-t-il être stocké ?_
+
+Le fichier fourni pointait vers `/root/ca/intermediate`, un dossier qui n'existe pas sur ma machine. J'ai remplacé cette valeur par **`/home/etudiant/ca`**, le dossier imposé par le sujet :
+
+```console
+[etudiant@tls-ca-palancac ca]$ sed -i 's|^dir = /root/ca/intermediate|dir = /home/etudiant/ca|' openssl.cnf
+[etudiant@tls-ca-palancac ca]$ grep -n "^dir" openssl.cnf
+9:dir = /home/etudiant/ca
+```
+
+Les autres chemins étant construits à partir de `$dir` :
+
+- **la clé privée de la CA** doit être stockée dans le dossier **`/home/etudiant/ca/private/`**, sous le nom **`intermediate.key.pem`** (paramètre `private_key`) ;
+- **le certificat de la CA** doit être stocké dans le dossier **`/home/etudiant/ca/certs/`**, sous le nom **`intermediate.cert.pem`** (paramètre `certificate`).
+
+J'ai ensuite créé l'arborescence et les fichiers attendus par `openssl ca` :
+
+```console
+[etudiant@tls-ca-palancac ca]$ mkdir certs crl csr newcerts private
+[etudiant@tls-ca-palancac ca]$ chmod 700 private
+[etudiant@tls-ca-palancac ca]$ touch index.txt
+[etudiant@tls-ca-palancac ca]$ echo 1000 > serial
+[etudiant@tls-ca-palancac ca]$ echo 1000 > crlnumber
+[etudiant@tls-ca-palancac ca]$ ls -la
+total 16
+drwxr-xr-x. 7 etudiant etudiant  139 Nov 16 10:17 .
+drwx------. 5 etudiant etudiant 4096 Nov 16 10:15 ..
+drwxr-xr-x. 2 etudiant etudiant    6 Nov 16 10:17 certs
+drwxr-xr-x. 2 etudiant etudiant    6 Nov 16 10:17 crl
+-rw-r--r--. 1 etudiant etudiant    5 Nov 16 10:17 crlnumber
+drwxr-xr-x. 2 etudiant etudiant    6 Nov 16 10:17 csr
+-rw-r--r--. 1 etudiant etudiant    0 Nov 16 10:17 index.txt
+drwxr-xr-x. 2 etudiant etudiant    6 Nov 16 10:17 newcerts
+-rw-r--r--. 1 etudiant etudiant 3957 Nov 16 10:17 openssl.cnf
+drwx------. 2 etudiant etudiant    6 Nov 16 10:17 private
+-rw-r--r--. 1 etudiant etudiant    5 Nov 16 10:17 serial
+```
+
+C'est la même structure que celle de la racine étudiée en 6.2 : `index.txt` est la base de données (vide pour l'instant), `serial` et `crlnumber` contiennent les prochains numéros de certificat et de CRL (`1000` en hexadécimal), et `private/` n'est accessible qu'à son propriétaire (`drwx------`).
+
+### Question 22
+
+> _Relever la commande saisie pour créer la clé._
+
+Le sujet laissait le choix entre une clé RSA de 3072 bits et une clé sur courbe elliptique. J'ai choisi une clé **EC sur la courbe P-256**, la même que celle de `Root Lorne` : elle offre une sécurité équivalente à RSA 3072 (voir la question 20) avec des clés et des signatures bien plus courtes.
+
+```console
+[etudiant@tls-ca-palancac ca]$ openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -aes128 -out private/intermediate.key.pem
+Enter PEM pass phrase:
+Verifying - Enter PEM pass phrase:
+[etudiant@tls-ca-palancac ca]$ chmod 400 private/intermediate.key.pem
+[etudiant@tls-ca-palancac ca]$ ls -l private/
+total 4
+-r--------. 1 etudiant etudiant 412 Nov 16 10:17 intermediate.key.pem
+[etudiant@tls-ca-palancac ca]$ head -1 private/intermediate.key.pem
+-----BEGIN ENCRYPTED PRIVATE KEY-----
+```
+
+| Option                              | Rôle                                                                                     |
+| ----------------------------------- | ---------------------------------------------------------------------------------------- |
+| `genpkey -algorithm EC`             | Génère une bi-clé sur courbe elliptique                                                  |
+| `-pkeyopt ec_paramgen_curve:P-256`  | Choisit la courbe P-256 (`prime256v1`)                                                   |
+| `-aes128`                           | Chiffre la clé privée en AES 128 bits, avec une clé dérivée de la passphrase (mon login) |
+| `-out private/intermediate.key.pem` | Enregistre la clé à l'emplacement attendu par `openssl.cnf` (question 21)                |
+
+La passphrase est saisie de façon interactive, pour ne pas apparaître dans l'historique du shell. L'en-tête `ENCRYPTED PRIVATE KEY` confirme que la clé est chiffrée. Le `chmod 400` la rend lisible uniquement par son propriétaire, et en lecture seule. Le fichier ne fait que 412 octets.
+
+### Question 23
+
+> _On constate que la demande de certificat contient déjà une signature. Pourquoi la présence de cette signature peut-elle être qualifiée d'incongrue ? Rechercher l'intérêt de cette signature._
+
+J'ai généré la demande de certificat avec la commande du sujet. La passphrase est demandée, car la CSR est signée avec la clé privée de la CA intermédiaire :
+
+```console
+[etudiant@tls-ca-palancac ca]$ openssl req -config openssl.cnf -new -sha256 -key private/intermediate.key.pem \
+  -out csr/intermediate.csr.pem -subj "/C=FR/ST=Savoie/L=Chambery/O=TP Sécurité/CN=RA palancac"
+Enter pass phrase for private/intermediate.key.pem:
+[etudiant@tls-ca-palancac ca]$ openssl req -in csr/intermediate.csr.pem -noout -text
+Certificate Request:
+    Data:
+        Version: 1 (0x0)
+        Subject: C=FR, ST=Savoie, L=Chambery, O=TP SÃ©curitÃ©, CN=RA palancac
+        Subject Public Key Info:
+            Public Key Algorithm: id-ecPublicKey
+                Public-Key: (256 bit)
+                pub:
+                    04:08:a0:6e:1e:8b:f6:3a:75:f1:5e:6e:02:37:a8:
+                    b0:e4:6d:05:f9:07:81:e5:c3:06:1c:72:44:68:36:
+                    91:46:2d:36:e4:06:db:08:e7:af:b7:8f:1e:67:8b:
+                    bb:a4:ff:28:eb:f9:cd:69:72:fd:72:95:66:cb:bc:
+                    73:a5:ce:a2:fe
+                ASN1 OID: prime256v1
+                NIST CURVE: P-256
+        Attributes:
+            (none)
+            Requested Extensions:
+    Signature Algorithm: ecdsa-with-SHA256
+    Signature Value:
+        30:44:02:20:5c:fa:3f:aa:33:93:ea:af:74:b6:71:af:c6:a2:
+        3a:97:a6:ce:c6:b9:7a:ef:e5:28:97:ab:a7:c6:cc:e2:62:05:
+        02:20:4c:4f:e4:c4:10:13:b4:4f:2b:3b:81:72:30:9c:fb:14:
+        7b:87:a2:a2:6d:34:cd:47:6c:7b:2b:e7:6e:4f:27:e9
+```
+
+La demande correspond à celle attendue : le sujet est `C=FR, ST=Savoie, L=Chambery, O=TP Sécurité, CN=RA palancac`, et elle contient ma clé publique EC P-256. Une CSR (format **PKCS#10**) ne contient que trois éléments : le sujet demandé, la clé publique, et d'éventuelles extensions (aucune ici). Les extensions de CA (`CA:TRUE`, `pathlen:0`…) seront ajoutées par la racine au moment de la signature, avec la section `[ v3_intermediate_ca ]`.
+
+**Problème d'encodage du champ O.** Le « é » de `TP Sécurité` s'affiche `Ã©`, exactement comme dans le certificat de `Root Lorne`. L'analyse de la structure ASN.1 en donne la raison :
+
+```console
+[etudiant@tls-ca-palancac ca]$ openssl asn1parse -in csr/intermediate.csr.pem | grep -A1 organizationName
+   65:d=5  hl=2 l=   3 prim: OBJECT            :organizationName
+   70:d=5  hl=2 l=  17 prim: UTF8STRING        :TP SÃ©curitÃ©
+```
+
+Le champ est une `UTF8STRING` de **17 octets**, alors que « TP Sécurité » correctement encodé en UTF-8 n'en fait que 13. Sans l'option `-utf8`, `openssl req` considère que chaque octet saisi est un caractère distinct. Les deux octets UTF-8 de « é » (`C3 A9`) deviennent alors deux caractères, « Ã » et « © », réencodés chacun sur deux octets, soit 4 octets par « é ». Ce n'est pas gênant ici, et c'est même nécessaire : la politique `policy_strict` de la racine exige un champ `organizationName` **identique octet pour octet** au sien, et le certificat de `Root Lorne` a été créé de la même façon. Ajouter `-utf8` produirait un « é » correct, mais la racine refuserait alors de signer la demande.
+
+**Pourquoi cette signature est incongrue :** une demande de certificat sert justement à obtenir une signature, celle de l'autorité de certification. Or elle est déjà signée, **par le demandeur lui-même**, avec sa propre clé privée : c'est une signature « auto-signée », que personne n'a de raison de croire, puisque personne ne garantit encore que cette clé appartient à `RA palancac`. De plus, cette signature disparaît : le certificat final ne contiendra que la signature de la racine.
+
+**L'intérêt de cette signature** est double :
+
+- **Prouver la possession de la clé privée** (_proof of possession_). En vérifiant la signature avec la clé publique contenue dans la CSR, la CA s'assure que le demandeur détient bien la clé privée correspondante. Sans cette preuve, n'importe qui pourrait récupérer la clé publique de quelqu'un d'autre (par exemple celle d'un serveur, qui est publique) et obtenir un certificat associant cette clé à sa propre identité.
+- **Garantir l'intégrité de la demande.** Si le sujet ou la clé publique étaient modifiés pendant le transfert de la CSR vers la CA (ici par copier-coller), la signature ne serait plus valide.
+
+OpenSSL permet de vérifier cette signature, comme le fera la racine avant de signer :
+
+```console
+[etudiant@tls-ca-palancac ca]$ openssl req -in csr/intermediate.csr.pem -noout -verify
+Certificate request self-signature verify OK
+```
+
+#### Signature de la demande par la CA racine
+
+Il faut maintenant demander à `Root Lorne` de transformer cette demande en certificat. Pour cela, la CSR doit être déposée sur la machine de la racine. Comme le demande le sujet, je l'ai affichée au format texte sur `tls-ca-palancac`, puis copiée-collée dans un nouveau fichier `ca/csr/palancac.csr.pem` sur `root-ca-tp` :
+
+```console
+[etudiant@tls-ca-palancac ca]$ cat csr/intermediate.csr.pem
+-----BEGIN CERTIFICATE REQUEST-----
+MIIBHTCBxQIBADBjMQswCQYDVQQGEwJGUjEPMA0GA1UECAwGU2F2b2llMREwDwYD
+VQQHDAhDaGFtYmVyeTEaMBgGA1UECgwRVFAgU8ODwqljdXJpdMODwqkxFDASBgNV
+BAMMC1JBIHBhbGFuY2FjMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAECKBuHov2
+OnXxXm4CN6iw5G0F+QeB5cMGHHJEaDaRRi025AbbCOevt48eZ4u7pP8o6/nNaXL9
+cpVmy7xzpc6i/qAAMAoGCCqGSM49BAMCA0cAMEQCIFz6P6ozk+qvdLZxr8aiOpem
+zsa5eu/lKJerp8bM4mIFAiBMT+TEEBO0Tys7gXIwnPsUe4eiom00zUdseyvnbk8n
+6Q==
+-----END CERTIFICATE REQUEST-----
+```
+
+Une CSR ne contient que des informations publiques (le sujet et la clé publique) : elle peut être transmise et affichée sans risque.
+
+**Un premier essai a échoué.** Après le collage dans `nano`, `openssl ca` refusait de lire la demande :
+
+```console
+[camanager@root-ca-tp ca]$ openssl ca -config openssl.cnf -extensions v3_intermediate_ca \
+  -days 3650 -notext -md sha256 -in csr/palancac.csr.pem \
+  -out certs/palancac.cert.pem
+Using configuration from openssl.cnf
+Enter pass phrase for /home/camanager/ca/private/ca.key.pem:
+80E29D8ADD7F0000:error:068000A8:asn1 encoding routines:asn1_check_tlen:wrong tag:crypto/asn1/tasn_dec.c:1186:
+80E29D8ADD7F0000:error:0688010A:asn1 encoding routines:asn1_item_embed_d2i:nested asn1 error:crypto/asn1/tasn_dec.c:349:Type=X509_REQ
+error: unable to load certificate request from file 'csr/palancac.csr.pem'
+```
+
+L'affichage du fichier avec `cat -A`, qui marque chaque fin de ligne par `$`, a permis de trouver la cause :
+
+```console
+[camanager@root-ca-tp ca]$ cat -A csr/palancac.csr.pem
+-----BEGIN CERTIFICATE REQUEST-----$
+[...]
+zsa5eu/lKJerp8bM4mIFAiBMT+TEEBO0Tys7gXIwnPsUe4eiom00zUdseyvnbk8n$
+6Q=$
+-----END CERTIFICATE REQUEST-----$
+```
+
+La dernière ligne de Base64 contenait `6Q=` au lieu de `6Q==` : un caractère `=` avait été perdu pendant le collage. Ces `=` finaux sont des caractères de remplissage, qui indiquent au décodeur combien d'octets utiles contient le dernier bloc Base64. Avec un seul `=`, le dernier octet décodé est faux, la structure ASN.1 ne correspond plus à une demande de certificat (`wrong tag`, `Type=X509_REQ`), et le fichier devient illisible. J'ai rétabli le caractère manquant, puis vérifié la demande avant de la signer :
+
+```bash
+sed -i 's/^6Q=$/6Q==/' csr/palancac.csr.pem
+openssl req -in csr/palancac.csr.pem -noout -verify -subject
+```
+
+Cet incident montre les limites du copier-coller pour transférer des fichiers. Il montre aussi l'utilité de la signature de la CSR vue à la question 23 : si un caractère avait été modifié au lieu d'être supprimé, le fichier serait resté lisible, mais la vérification de la signature aurait échoué et la racine aurait refusé la demande.
+
+Une fois le fichier corrigé, la racine a signé la demande avec les extensions `v3_intermediate_ca`, pour une durée de 10 ans (`-days 3650`) :
+
+```console
+[camanager@root-ca-tp ca]$ openssl ca -config openssl.cnf -extensions v3_intermediate_ca \
+  -days 3650 -notext -md sha256 -in csr/palancac.csr.pem \
+  -out certs/palancac.cert.pem
+Using configuration from openssl.cnf
+Enter pass phrase for /home/camanager/ca/private/ca.key.pem:
+Check that the request matches the signature
+Signature ok
+Certificate Details:
+        Serial Number: 4129 (0x1021)
+        Validity
+            Not Before: Nov 16 09:24:55 2026 GMT
+            Not After : Nov 13 09:24:55 2036 GMT
+        Subject:
+            countryName               = FR
+            stateOrProvinceName       = Savoie
+            organizationName          = TP S\C3\A9curit\C3\A9
+            commonName                = RA palancac
+        X509v3 extensions:
+            X509v3 Subject Key Identifier:
+                EA:22:EA:80:2F:10:18:6B:41:BE:F3:5A:2F:70:CB:47:2C:A6:35:96
+            X509v3 Authority Key Identifier:
+                85:44:BC:D9:48:94:58:B7:90:E3:B0:65:31:CC:2C:23:2C:8F:5F:80
+            X509v3 Basic Constraints: critical
+                CA:TRUE, pathlen:0
+            X509v3 Key Usage: critical
+                Digital Signature, Certificate Sign, CRL Sign
+Certificate is to be certified until Nov 13 09:24:55 2036 GMT (3650 days)
+Sign the certificate? [y/n]:y
+
+
+1 out of 1 certificate requests certified, commit? [y/n]y
+Write out database with 1 new entries
+Database updated
+```
+
+Le déroulement de la signature est le suivant :
+
+1. **`Check that the request matches the signature` / `Signature ok`** : la racine vérifie d'abord la signature de la CSR, c'est-à-dire la preuve de possession de la clé privée (question 23).
+2. **Application de la politique `policy_strict`** : les champs `C`, `ST` et `O` de la demande sont identiques à ceux de la racine, octet pour octet, ce qui confirme que le choix de ne pas utiliser `-utf8` était le bon. Le champ `L=Chambery` a en revanche **disparu** du sujet : `localityName` ne figure pas dans `policy_strict`, et avec `preserve = no`, `openssl ca` supprime tout champ que la politique ne mentionne pas.
+3. **Ajout des extensions `v3_intermediate_ca`** : `CA:TRUE, pathlen:0` et les usages `Certificate Sign` et `CRL Sign`, qui n'étaient pas dans la demande. L'_Authority Key Identifier_ (`85:44:BC:D9:…`) est égal au SKI de `Root Lorne` relevé à la question 20.
+4. **Attribution du numéro de série** `0x1021`, lu dans le fichier `serial` de la racine. C'est le 34ᵉ certificat délivré depuis `0x1000`.
+5. **Double confirmation** (`Sign the certificate?`, puis `commit?`), puis mise à jour de la base `index.txt`.
+
+#### Vérification du certificat de la CA intermédiaire
+
+```console
+[camanager@root-ca-tp ca]$ openssl x509 -in certs/palancac.cert.pem -noout -text
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 4129 (0x1021)
+        Signature Algorithm: ecdsa-with-SHA256
+        Issuer: C=FR, ST=Savoie, L=ChambÃ©ry, O=TP SÃ©curitÃ©, CN=Root Lorne
+        Validity
+            Not Before: Nov 16 09:24:55 2026 GMT
+            Not After : Nov 13 09:24:55 2036 GMT
+        Subject: C=FR, ST=Savoie, O=TP SÃ©curitÃ©, CN=RA palancac
+        Subject Public Key Info:
+            Public Key Algorithm: id-ecPublicKey
+                Public-Key: (256 bit)
+                pub:
+                    04:08:a0:6e:1e:8b:f6:3a:75:f1:5e:6e:02:37:a8:
+                    [...]
+                ASN1 OID: prime256v1
+                NIST CURVE: P-256
+        X509v3 extensions:
+            X509v3 Subject Key Identifier:
+                EA:22:EA:80:2F:10:18:6B:41:BE:F3:5A:2F:70:CB:47:2C:A6:35:96
+            X509v3 Authority Key Identifier:
+                85:44:BC:D9:48:94:58:B7:90:E3:B0:65:31:CC:2C:23:2C:8F:5F:80
+            X509v3 Basic Constraints: critical
+                CA:TRUE, pathlen:0
+            X509v3 Key Usage: critical
+                Digital Signature, Certificate Sign, CRL Sign
+    Signature Algorithm: ecdsa-with-SHA256
+    Signature Value:
+        30:45:02:21:00:e6:0f:09:53:84:44:e0:cf:ab:82:49:0e:8c:
+        [...]
+```
+
+Le certificat correspond à celui attendu :
+
+| Élément      | Valeur                                               | Remarque                                                                          |
+| ------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Émetteur     | `CN=Root Lorne`                                      | Signé par la racine, en ECDSA                                                     |
+| Sujet        | `C=FR, ST=Savoie, O=TP Sécurité, CN=RA palancac`     | Sans `L`, supprimé par la politique                                               |
+| Clé publique | EC P-256, `04:08:a0:6e:…`                            | Identique à celle de la CSR : c'est bien la clé de `private/intermediate.key.pem` |
+| Validité     | du 16 novembre 2026 au 13 novembre 2036              | 10 ans, entre les 20 ans de la racine et l'année d'un certificat de serveur       |
+| Extensions   | `CA:TRUE, pathlen:0`, `Certificate Sign`, `CRL Sign` | CA autorisée à signer des certificats finaux uniquement                           |
+
+On retrouve la même structure qu'avec `GEANT TLS RSA 1` à la question 17 : une CA intermédiaire avec `pathlen:0`, dont l'AKI pointe vers la racine qui l'a signée.
+
+#### Installation du certificat sur la CA intermédiaire
+
+Le certificat a ensuite été copié-collé sur `tls-ca-palancac`, à l'emplacement défini par le paramètre `certificate` de `openssl.cnf` (question 21). Pour éviter de perdre à nouveau un caractère, j'ai collé le texte dans un _heredoc_ plutôt que dans `nano` : `cat` écrit le texte tel quel, sans le retoucher.
+
+```console
+[etudiant@tls-ca-palancac ca]$ cat > certs/intermediate.cert.pem <<'EOF'
+-----BEGIN CERTIFICATE-----
+MIICCzCCAbGgAwIBAgICECEwCgYIKoZIzj0EAwIwZTELMAkGA1UEBhMCRlIxDzAN
+[...]
+A20h1CAD8/ELcMoYdQIgTUuJSYmXsZb07oSgR6L1mOQcOiEpmPao/ujSWU+9mpo=
+-----END CERTIFICATE-----
+EOF
+[etudiant@tls-ca-palancac ca]$ openssl x509 -in certs/intermediate.cert.pem -noout -subject -issuer -dates
+subject=C=FR, ST=Savoie, O=TP SÃ©curitÃ©, CN=RA palancac
+issuer=C=FR, ST=Savoie, L=ChambÃ©ry, O=TP SÃ©curitÃ©, CN=Root Lorne
+notBefore=Nov 16 09:24:55 2026 GMT
+notAfter=Nov 13 09:24:55 2036 GMT
+[etudiant@tls-ca-palancac ca]$ openssl x509 -in certs/intermediate.cert.pem -noout -pubkey | diff - <(openssl pkey -in private/intermediate.key.pem -pubout) && echo "clé OK"
+Enter pass phrase for private/intermediate.key.pem:
+clé OK
+```
+
+La dernière commande extrait la clé publique de deux façons, depuis le certificat et depuis la clé privée, puis les compare avec `diff`. Elles sont identiques : le certificat signé par `Root Lorne` correspond bien à la clé privée de ma CA. Celle-ci dispose maintenant de tout ce qu'il lui faut (clé privée, certificat, base de données et configuration) pour délivrer des certificats à des serveurs.
+
 ## 7. Mise en place d'un reverse proxy
 
 ## 8. Développement d'un client Web
