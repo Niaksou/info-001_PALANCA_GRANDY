@@ -768,6 +768,281 @@ La taille de la signature confirme qui l'a produite : la valeur affichée sous `
 
 Il ne faut pas confondre cette signature avec la ligne `Peer signature type: rsa_pss_rsae_sha256` de la sortie de `s_client`. Celle-ci est une signature produite **par le serveur**, avec sa propre clé privée, pendant la poignée de main TLS (message `CertificateVerify`). Elle prouve qu'il possède bien la clé privée correspondant au certificat, comme vu à l'étape 6 de la question 4.
 
+### Question 17
+
+> _Afficher le certificat de la CA qui a délivré le certificat de `www.univ-grenoble-alpes.fr`. Relever le sujet de ce certificat. Quelle est la taille de la clé publique présente dans ce certificat ? Par quelle CA ce certificat a-t-il été signé ?_
+
+Le certificat de la CA émettrice est le deuxième de la chaîne envoyée par le serveur, extrait dans `cert1.pem`. Plutôt que d'afficher tout le certificat, j'ai demandé à OpenSSL uniquement les champs utiles :
+
+```console
+[etudiant@tls-ca-palancac ~]$ openssl x509 -in cert1.pem -noout -subject -issuer -dates
+subject=C=GR, O=Hellenic Academic and Research Institutions CA, CN=GEANT TLS RSA 1
+issuer=C=GR, O=Hellenic Academic and Research Institutions CA, CN=HARICA TLS RSA Root CA 2021
+notBefore=Jan  3 11:15:00 2025 GMT
+notAfter=Dec 31 11:14:59 2039 GMT
+[etudiant@tls-ca-palancac ~]$ openssl x509 -in cert1.pem -noout -text | grep -E "Public-Key|CA:|Path|Key Usage" -A1
+                Public-Key: (3072 bit)
+                Modulus:
+--
+                CA:TRUE, pathlen:0
+            X509v3 Authority Key Identifier:
+--
+            X509v3 Extended Key Usage:
+                TLS Web Client Authentication, TLS Web Server Authentication
+--
+            X509v3 Key Usage: critical
+                Digital Signature, Certificate Sign, CRL Sign
+```
+
+- **Sujet :** `C=GR, O=Hellenic Academic and Research Institutions CA, CN=GEANT TLS RSA 1`. C'est l'autorité intermédiaire exploitée par HARICA pour le compte de GÉANT.
+- **Taille de la clé publique :** **3072 bits**, contre 2048 bits pour le serveur. Une CA utilise une clé plus longue, car elle reste en service beaucoup plus longtemps : ce certificat est valable de 2025 à **2039**, soit près de 15 ans, contre 199 jours pour celui du serveur. Une clé de CA compromise permettrait de fabriquer de faux certificats pour n'importe quel site.
+- **Signé par :** `HARICA TLS RSA Root CA 2021` (champ `issuer`), l'autorité racine de HARICA.
+
+Les extensions montrent que ce certificat est bien celui d'une autorité de certification, contrairement à celui du serveur :
+
+| Extension           | Certificat du serveur (`cert0`)       | Certificat de la CA (`cert1`)                   |
+| ------------------- | ------------------------------------- | ----------------------------------------------- |
+| `Basic Constraints` | `CA:FALSE`                            | `CA:TRUE, pathlen:0`                            |
+| `Key Usage`         | `Digital Signature, Key Encipherment` | `Digital Signature, Certificate Sign, CRL Sign` |
+
+`CA:TRUE` et `Certificate Sign` autorisent la CA à signer des certificats, et `CRL Sign` à signer la liste de révocation vue à la question 15. `pathlen:0` signifie qu'aucune autre CA intermédiaire ne peut exister sous elle : elle peut seulement signer des certificats finaux, comme celui de l'université.
+
+### Question 18
+
+> _Pour chaque certificat de niveau n, vérifier rapidement qu'il contient les informations nécessaires pour valider le certificat de niveau n-1. On s'intéresse au certificat de dernier niveau. Quel certificat permet de valider ce certificat ? Où se trouve-t-il ?_
+
+Ici, le certificat de niveau n est celui de l'émetteur, et le certificat de niveau n−1 celui qu'il a signé. Pour que le certificat n puisse valider le certificat n−1, deux conditions doivent être réunies :
+
+1. **Le sujet du certificat n est égal à l'émetteur du certificat n−1.** C'est ce lien qui permet de construire la chaîne.
+2. **Le certificat n contient la clé publique qui vérifie la signature du certificat n−1.** Pour la retrouver sans ambiguïté, chaque certificat porte deux identifiants de clé : le _Subject Key Identifier_ (SKI) identifie sa propre clé, et l'_Authority Key Identifier_ (AKI) identifie la clé de l'émetteur. L'AKI du certificat n−1 doit donc être égal au SKI du certificat n.
+
+J'ai affiché ces quatre champs pour les trois certificats de la chaîne :
+
+```console
+[etudiant@tls-ca-palancac ~]$ for i in 0 1 2; do
+  echo "== cert$i.pem"
+  openssl x509 -in cert$i.pem -noout -subject -issuer -ext subjectKeyIdentifier,authorityKeyIdentifier
+done
+== cert0.pem
+subject=C=FR, ST=Auvergne-Rhône-Alpes, L=Saint-Martin-d'Hères, O=Université Grenoble Alpes, CN=*.univ-grenoble-alpes.fr
+issuer=C=GR, O=Hellenic Academic and Research Institutions CA, CN=GEANT TLS RSA 1
+X509v3 Authority Key Identifier:
+    86:01:72:3F:8C:A9:70:E2:31:06:53:16:CE:01:5F:5B:79:C8:3C:3B
+X509v3 Subject Key Identifier:
+    97:DD:13:BA:7F:CC:52:79:B5:76:BE:3A:83:EF:90:38:60:C3:AD:CB
+== cert1.pem
+subject=C=GR, O=Hellenic Academic and Research Institutions CA, CN=GEANT TLS RSA 1
+issuer=C=GR, O=Hellenic Academic and Research Institutions CA, CN=HARICA TLS RSA Root CA 2021
+X509v3 Authority Key Identifier:
+    0A:48:23:A6:60:A4:92:0A:33:EA:93:5B:C5:57:EA:25:4D:BD:12:EE
+X509v3 Subject Key Identifier:
+    86:01:72:3F:8C:A9:70:E2:31:06:53:16:CE:01:5F:5B:79:C8:3C:3B
+== cert2.pem
+subject=C=GR, O=Hellenic Academic and Research Institutions CA, CN=HARICA TLS RSA Root CA 2021
+issuer=C=GR, L=Athens, O=Hellenic Academic and Research Institutions Cert. Authority, CN=Hellenic Academic and Research Institutions RootCA 2015
+X509v3 Authority Key Identifier:
+    71:15:67:C8:C8:C9:BD:75:5D:72:D0:38:18:6A:9D:F3:71:24:54:0B
+X509v3 Subject Key Identifier:
+    0A:48:23:A6:60:A4:92:0A:33:EA:93:5B:C5:57:EA:25:4D:BD:12:EE
+```
+
+Les identifiants s'enchaînent parfaitement :
+
+| Certificat validé (n−1) | AKI du certificat n−1 | Certificat validant (n)    | SKI du certificat n       |
+| ----------------------- | --------------------- | -------------------------- | ------------------------- |
+| `cert0` (serveur)       | `86:01:72:3F:…:3C:3B` | `cert1` (GEANT TLS RSA 1)  | `86:01:72:3F:…:3C:3B`     |
+| `cert1` (GEANT)         | `0A:48:23:A6:…:12:EE` | `cert2` (HARICA Root 2021) | `0A:48:23:A6:…:12:EE`     |
+| `cert2` (HARICA 2021)   | `71:15:67:C8:…:54:0B` | Hellenic RootCA 2015       | non envoyé par le serveur |
+
+Les sujets et émetteurs concordent de la même façon. Chaque certificat de la chaîne contient donc bien la clé publique nécessaire pour vérifier la signature du précédent, ainsi que `CA:TRUE` et `Certificate Sign` qui l'autorisent à signer.
+
+**Le certificat de dernier niveau** est `cert2`, `HARICA TLS RSA Root CA 2021`. Il est signé par `Hellenic Academic and Research Institutions RootCA 2015`, dont la clé a pour identifiant `71:15:67:C8:…`. **Ce certificat n'a pas été envoyé par le serveur** : il doit se trouver sur la machine du client, dans son **magasin de certificats de confiance**. C'est ce point de départ, installé à l'avance, qui permet de faire confiance à tout le reste de la chaîne.
+
+#### Recherche de la racine dans le magasin de confiance
+
+La page de manuel de `update-ca-trust` indique que les certificats de confiance sont regroupés dans `/etc/pki/ca-trust/extracted/`, et cite le fichier `openssl/ca-bundle.trust.crt`. Ce fichier n'existe pas sur la version d'Alma Linux utilisée : le dossier `openssl/` ne contient plus qu'un `README`. J'ai donc utilisé le fichier `pem/tls-ca-bundle.pem`, décrit dans la même page comme contenant les CA de confiance pour l'authentification des serveurs TLS :
+
+```console
+[etudiant@tls-ca-palancac ~]$ man update-ca-trust | grep -n -B1 -A4 "extracted/"
+[...]
+123:       The directory /etc/pki/ca-trust/extracted/openssl/ contains CA certificate bundle files in the extended BEGIN/END TRUSTED CERTIFICATE file format, as
+124-       described in the x509(1) manual page. File ca-bundle.trust.crt contains the full set of all trusted or distrusted certificates, including the associated
+125-       trust flags.
+126-
+127:       The directory /etc/pki/ca-trust/extracted/pem/ contains CA certificate bundle files in the simple BEGIN/END CERTIFICATE file format, as described in the
+128-       x509(1) manual page. Distrust information cannot be represented in this file format, and distrusted certificates are missing from these files. File
+129-       tls-ca-bundle.pem contains CA certificates trusted for TLS server authentication. File email-ca-bundle.pem contains CA certificates trusted for E-Mail
+130-       protection. File objsign-ca-bundle.pem contains CA certificates trusted for code signing.
+[...]
+[etudiant@tls-ca-palancac ~]$ ls -l /etc/pki/ca-trust/extracted/openssl/ /etc/pki/ca-trust/extracted/pem/
+/etc/pki/ca-trust/extracted/openssl/:
+total 4
+-rw-r--r--. 1 root root 787 Oct 29  2024 README
+
+/etc/pki/ca-trust/extracted/pem/:
+total 904
+-rw-r--r--. 1 root root    898 Oct 29  2024 README
+dr-xr-xr-x. 2 root root  16384 Aug 27  2025 directory-hash
+-r--r--r--. 1 root root 165521 Aug 27  2025 email-ca-bundle.pem
+-r--r--r--. 1 root root 502506 Aug 27  2025 objsign-ca-bundle.pem
+-r--r--r--. 1 root root 226489 Aug 27  2025 tls-ca-bundle.pem
+```
+
+Ce fichier contient plusieurs centaines de certificats à la suite. Je l'ai découpé en un fichier par certificat, puis j'ai cherché ceux de HARICA :
+
+```console
+[etudiant@tls-ca-palancac ~]$ mkdir -p ~/store && cd ~/store
+[etudiant@tls-ca-palancac store]$ awk '/BEGIN CERTIFICATE/{n++; f=sprintf("ca%03d.pem", n)} f{print > f} /END CERTIFICATE/{f=""}' \
+  /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+[etudiant@tls-ca-palancac store]$ for f in ca*.pem; do
+  s=$(openssl x509 -in $f -noout -subject)
+  echo "$s" | grep -qiE "harica|hellenic" && echo "$f : $s"
+done
+ca076.pem : subject=C=GR, O=Hellenic Academic and Research Institutions CA, CN=HARICA TLS ECC Root CA 2021
+ca077.pem : subject=C=GR, O=Hellenic Academic and Research Institutions CA, CN=HARICA TLS RSA Root CA 2021
+ca078.pem : subject=C=GR, L=Athens, O=Hellenic Academic and Research Institutions Cert. Authority, CN=Hellenic Academic and Research Institutions ECC RootCA 2015
+ca079.pem : subject=C=GR, L=Athens, O=Hellenic Academic and Research Institutions Cert. Authority, CN=Hellenic Academic and Research Institutions RootCA 2015
+```
+
+Le certificat qui valide `cert2` est `Hellenic Academic and Research Institutions RootCA 2015`, en version RSA (`ca079.pem`). Il se trouve dans le magasin de confiance du système, `/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem`, installé avec le paquet `ca-certificates`. Les variantes ECC (`ca076`, `ca078`) correspondent à d'autres racines HARICA, à base de courbes elliptiques.
+
+On constate aussi que **`HARICA TLS RSA Root CA 2021` est elle-même présente dans le magasin** (`ca077.pem`), cette fois sous forme de certificat auto-signé. Le client n'a donc même pas besoin de remonter jusqu'à la racine de 2015, comme le montre la vérification de la chaîne :
+
+```console
+[etudiant@tls-ca-palancac ~]$ openssl verify -show_chain -untrusted cert1.pem cert0.pem
+cert0.pem: OK
+Chain:
+depth=0: C=FR, ST=Auvergne-Rhône-Alpes, L=Saint-Martin-d'Hères, O=Université Grenoble Alpes, CN=*.univ-grenoble-alpes.fr (untrusted)
+depth=1: C=GR, O=Hellenic Academic and Research Institutions CA, CN=GEANT TLS RSA 1 (untrusted)
+depth=2: C=GR, O=Hellenic Academic and Research Institutions CA, CN=HARICA TLS RSA Root CA 2021
+```
+
+L'option `-untrusted cert1.pem` fournit le certificat intermédiaire sans lui accorder de confiance : il sert seulement à construire la chaîne. Les niveaux 0 et 1 sont marqués `(untrusted)`, car ils viennent de fichiers fournis par l'utilisateur. Le niveau 2 ne l'est pas : OpenSSL l'a trouvé dans le magasin de confiance, où il s'arrête. C'est pour cela que `s_client` s'arrêtait déjà à `depth=2` à la question 12.
+
+Les deux versions de `HARICA TLS RSA Root CA 2021` (celle signée par la racine de 2015, envoyée par le serveur, et la version auto-signée du magasin) contiennent la **même clé publique**. Elles ont le même SKI, `0A:48:23:A6:…`, qui correspond aussi à l'AKI de `cert1` :
+
+```console
+[etudiant@tls-ca-palancac ~]$ openssl x509 -in ~/store/ca077.pem -noout -subject -issuer -ext subjectKeyIdentifier
+subject=C=GR, O=Hellenic Academic and Research Institutions CA, CN=HARICA TLS RSA Root CA 2021
+issuer=C=GR, O=Hellenic Academic and Research Institutions CA, CN=HARICA TLS RSA Root CA 2021
+X509v3 Subject Key Identifier:
+    0A:48:23:A6:60:A4:92:0A:33:EA:93:5B:C5:57:EA:25:4D:BD:12:EE
+```
+
+N'importe laquelle des deux peut donc valider la signature de `GEANT TLS RSA 1`. C'est tout l'intérêt du certificat croisé : un système récent fait confiance directement à la racine de 2021, et un système plus ancien, qui ne connaît que la racine de 2015, peut quand même valider la chaîne grâce à `cert2`.
+
+#### Extraction du certificat de la CA racine
+
+J'ai copié le certificat de la racine `Hellenic Academic and Research Institutions RootCA 2015`, trouvé à l'étape précédente, dans le fichier `root-ca1.pem`, puis j'ai affiché son contenu :
+
+```console
+[etudiant@tls-ca-palancac ~]$ cp ~/store/ca079.pem root-ca1.pem
+[etudiant@tls-ca-palancac ~]$ openssl x509 -in root-ca1.pem -noout -text | head -30
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 0 (0x0)
+        Signature Algorithm: sha256WithRSAEncryption
+        Issuer: C=GR, L=Athens, O=Hellenic Academic and Research Institutions Cert. Authority, CN=Hellenic Academic and Research Institutions RootCA 2015
+        Validity
+            Not Before: Jul  7 10:11:21 2015 GMT
+            Not After : Jun 30 10:11:21 2040 GMT
+        Subject: C=GR, L=Athens, O=Hellenic Academic and Research Institutions Cert. Authority, CN=Hellenic Academic and Research Institutions RootCA 2015
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (4096 bit)
+                Modulus:
+                    00:c2:f8:a9:3f:1b:89:fc:3c:3c:04:5d:3d:90:36:
+                    [...]
+[etudiant@tls-ca-palancac ~]$ openssl x509 -in root-ca1.pem -noout -subject -issuer -ext subjectKeyIdentifier,authorityKeyIdentifier,basicConstraints,keyUsage
+subject=C=GR, L=Athens, O=Hellenic Academic and Research Institutions Cert. Authority, CN=Hellenic Academic and Research Institutions RootCA 2015
+issuer=C=GR, L=Athens, O=Hellenic Academic and Research Institutions Cert. Authority, CN=Hellenic Academic and Research Institutions RootCA 2015
+X509v3 Basic Constraints: critical
+    CA:TRUE
+X509v3 Key Usage: critical
+    Certificate Sign, CRL Sign
+X509v3 Subject Key Identifier:
+    71:15:67:C8:C8:C9:BD:75:5D:72:D0:38:18:6A:9D:F3:71:24:54:0B
+```
+
+Le SKI de cette racine, `71:15:67:C8:…`, est bien égal à l'AKI de `cert2` relevé à la question 18. Pour le confirmer, j'ai demandé à OpenSSL de vérifier `cert2` en utilisant **uniquement** `root-ca1.pem` comme autorité de confiance. Les options `-no-CApath -no-CAstore` désactivent le magasin du système :
+
+```console
+[etudiant@tls-ca-palancac ~]$ openssl verify -no-CApath -no-CAstore -CAfile root-ca1.pem cert2.pem
+cert2.pem: OK
+[etudiant@tls-ca-palancac ~]$ openssl verify -no-CApath -no-CAstore -CAfile root-ca1.pem root-ca1.pem
+root-ca1.pem: OK
+```
+
+La première vérification prouve que c'est bien cette racine qui a signé `cert2`. La seconde montre que la racine se valide elle-même : sa signature est vérifiée avec sa propre clé publique.
+
+### Question 19
+
+> _Comparer les champs `subject` et `issuer`. Qu'en déduisez-vous ? Donnez la formule qui a permis de générer la signature de ce certificat. Comment s'appelle ce type de certificat ?_
+
+**Les champs `subject` et `issuer` sont identiques :**
+
+```text
+C=GR, L=Athens, O=Hellenic Academic and Research Institutions Cert. Authority, CN=Hellenic Academic and Research Institutions RootCA 2015
+```
+
+Le titulaire du certificat et l'autorité qui l'a signé sont donc la même entité : **la CA a signé son propre certificat**, avec sa propre clé privée. Il n'existe aucune autorité au-dessus d'elle : c'est le sommet de la chaîne de confiance.
+
+Plusieurs autres éléments le confirment :
+
+- **L'extension `Authority Key Identifier` est absente.** Elle servirait à désigner la clé de l'émetteur, qui est ici la même que celle du sujet (SKI `71:15:67:C8:…`).
+- **`openssl verify` accepte `root-ca1.pem` en se servant de lui-même comme seule autorité** : la signature est vérifiée avec la clé publique contenue dans le certificat.
+- **`Basic Constraints` vaut `CA:TRUE` sans `pathlen`** : contrairement à `GEANT TLS RSA 1` (`pathlen:0`), aucune limite n'est imposée au nombre de CA intermédiaires en dessous.
+- **`Key Usage` est limité à `Certificate Sign, CRL Sign`.** Une racine ne sert qu'à signer des certificats de CA et des listes de révocation, jamais à authentifier un serveur.
+- **La clé fait 4096 bits et le certificat est valable 25 ans**, de 2015 à 2040. C'est la clé la plus longue et la durée de vie la plus longue de toute la chaîne : 2048 bits et 199 jours pour le serveur, 3072 bits et 15 ans pour la CA intermédiaire.
+
+**Formule de la signature :** comme à la question 16, en notant $H$ la fonction SHA-256 et $E$ le chiffrement RSA, mais avec cette fois la **clé privée de la racine elle-même**, $K_{priv}^{root} = (n_{root}, d_{root})$ :
+
+```math
+\text{Signature} = E_{K_{priv}^{root}}\big(H(\text{TBSCertificate})\big) = \big(\text{pad}(H(\text{TBSCertificate}))\big)^{d_{root}} \bmod n_{root}
+```
+
+La vérification utilise la clé publique $(n_{root}, e_{root})$, qui se trouve dans le même certificat :
+
+```math
+\text{Signature}^{e_{root}} \bmod n_{root} \stackrel{?}{=} \text{pad}(H(\text{TBSCertificate}))
+```
+
+**Ce type de certificat s'appelle un certificat auto-signé** (_self-signed certificate_), et ici plus précisément un **certificat racine** (_root certificate_).
+
+Cette auto-signature ne prouve rien sur l'identité du titulaire : n'importe qui peut créer un certificat auto-signé au nom de HARICA. Elle prouve seulement l'intégrité du certificat et la possession de la clé privée. La confiance dans une racine ne vient donc pas de sa signature, mais de **sa présence dans le magasin de confiance**. Ce magasin est fourni par le système d'exploitation (ici le paquet `ca-certificates` d'Alma Linux) ou par le navigateur, qui n'y intègrent une CA qu'après des audits de sécurité. C'est pour cela que la racine n'a pas besoin d'être envoyée par le serveur pendant la poignée de main TLS : elle doit déjà se trouver chez le client.
+
+### 5.2 Dans un navigateur
+
+L'onglet « Général » du lecteur affiche les informations suivantes, que je compare à celles obtenues avec OpenSSL :
+
+| Information             | Chrome (« Lecteur du certificat »)                                 | OpenSSL (`cert0.pem`)                                              |
+| ----------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| Émis pour (CN)          | `*.univ-grenoble-alpes.fr`                                         | `Subject: … CN=*.univ-grenoble-alpes.fr`                           |
+| Émis pour (O)           | `Université Grenoble Alpes`                                        | `Subject: … O=Université Grenoble Alpes`                           |
+| Émis par (CN)           | `GEANT TLS RSA 1`                                                  | `Issuer: … CN=GEANT TLS RSA 1`                                     |
+| Émis par (O)            | `Hellenic Academic and Research Institutions CA`                   | `Issuer: … O=Hellenic Academic and Research Institutions CA`       |
+| Émis le                 | mardi 20 octobre 2026 à 11:03:04                                   | `Not Before: Oct 20 09:03:04 2026 GMT`                             |
+| Expire le               | vendredi 7 mai 2027 à 11:03:03                                     | `Not After : May  7 09:03:03 2027 GMT`                             |
+| Empreinte du certificat | `5716ad84d1bffda30b99098995d1a064ac19adabfdc19add30e5b3612ac7e342` | `57:16:AD:84:D1:BF:FD:A3:…:2A:C7:E3:42`                            |
+| Empreinte de la clé     | `a0a4174f66ef9de3660a18ff161b8aec805ff374b88789bf0b8f4cf8f2feea57` | `a0a4174f66ef9de3660a18ff161b8aec805ff374b88789bf0b8f4cf8f2feea57` |
+
+Les informations sont identiques. Les heures diffèrent de deux heures, car Chrome les affiche dans le fuseau horaire local (heure d'été de Paris, UTC+2), alors qu'OpenSSL les affiche en temps universel (GMT). La ligne « Unité d'organisation (OU) : &lt;Ne fait pas partie du certificat&gt; » correspond à l'absence d'attribut `OU` dans le sujet et l'émetteur, que l'on avait déjà constatée à la question 13.
+
+Les empreintes SHA-256 permettent de prouver qu'il s'agit **exactement du même certificat**, et pas seulement d'un certificat portant les mêmes noms. Je les ai recalculées avec OpenSSL à partir du fichier `cert0.pem` :
+
+```console
+[etudiant@tls-ca-palancac ~]$ openssl x509 -in cert0.pem -noout -fingerprint -sha256
+sha256 Fingerprint=57:16:AD:84:D1:BF:FD:A3:0B:99:09:89:95:D1:A0:64:AC:19:AD:AB:FD:C1:9A:DD:30:E5:B3:61:2A:C7:E3:42
+[etudiant@tls-ca-palancac ~]$ openssl x509 -in cert0.pem -noout -pubkey | openssl pkey -pubin -outform DER | openssl dgst -sha256
+SHA2-256(stdin)= a0a4174f66ef9de3660a18ff161b8aec805ff374b88789bf0b8f4cf8f2feea57
+```
+
+- **L'empreinte du certificat** est le haché SHA-256 du certificat complet, encodé en DER. Changer un seul bit du certificat (une date, un nom, la signature…) changerait totalement cette valeur. Les deux empreintes sont identiques : Chrome et OpenSSL ont reçu le même certificat.
+- **L'empreinte de la clé publique** est le haché du seul bloc `Subject Public Key Info`. Elle reste identique si le certificat est renouvelé avec la même clé. C'est pourquoi elle sert notamment à « épingler » une clé (_public key pinning_).
+
+Le navigateur et OpenSSL donnent donc la même vision du certificat. Le navigateur est plus pratique pour une vérification rapide, alors qu'OpenSSL permet d'extraire les certificats, de les manipuler et d'automatiser les vérifications.
+
 ## 6. Mise en place d'une PKI
 
 ## 7. Mise en place d'un reverse proxy
