@@ -518,6 +518,256 @@ Une limite subsiste toutefois : rien ne prouve que le message vient bien de la p
 
 ## 5. Analyse du contenu d'un certificat
 
+Cette partie étudie les informations contenues dans un certificat réel et la façon dont sa validité est vérifiée. Les manipulations sont faites depuis la machine `tls-ca-palancac`.
+
+### 5.1 En ligne de commande avec `openssl s_client`
+
+La sous-commande `s_client` d'OpenSSL se comporte comme un client TLS minimal : elle ouvre une connexion TLS vers un serveur et affiche tout ce qui se passe pendant la poignée de main.
+
+```console
+[etudiant@tls-ca-palancac ~]$ openssl s_client -showcerts -connect www.univ-grenoble-alpes.fr:443
+Connecting to 195.83.24.194
+CONNECTED(00000003)
+depth=2 C=GR, O=Hellenic Academic and Research Institutions CA, CN=HARICA TLS RSA Root CA 2021
+verify return:1
+depth=1 C=GR, O=Hellenic Academic and Research Institutions CA, CN=GEANT TLS RSA 1
+verify return:1
+depth=0 C=FR, ST=Auvergne-Rhône-Alpes, L=Saint-Martin-d'Hères, O=Université Grenoble Alpes, CN=*.univ-grenoble-alpes.fr
+verify return:1
+---
+Certificate chain
+ 0 s:C=FR, ST=Auvergne-Rhône-Alpes, L=Saint-Martin-d'Hères, O=Université Grenoble Alpes, CN=*.univ-grenoble-alpes.fr
+   i:C=GR, O=Hellenic Academic and Research Institutions CA, CN=GEANT TLS RSA 1
+   a:PKEY: RSA, 2048 (bit); sigalg: sha256WithRSAEncryption
+   v:NotBefore: Oct 20 09:03:04 2026 GMT; NotAfter: May  7 09:03:03 2027 GMT
+-----BEGIN CERTIFICATE-----
+MIIG/TCCBWWgAwIBAgIQCzgLFUhf5RQqoukVSN7tPTANBgkqhkiG9w0BAQsFADBg
+[...]
+1S05jJYrsTJlbu8L3jNs8gk=
+-----END CERTIFICATE-----
+ 1 s:C=GR, O=Hellenic Academic and Research Institutions CA, CN=GEANT TLS RSA 1
+   i:C=GR, O=Hellenic Academic and Research Institutions CA, CN=HARICA TLS RSA Root CA 2021
+   a:PKEY: RSA, 3072 (bit); sigalg: sha256WithRSAEncryption
+   v:NotBefore: Jan  3 11:15:00 2025 GMT; NotAfter: Dec 31 11:14:59 2039 GMT
+-----BEGIN CERTIFICATE-----
+[...]
+-----END CERTIFICATE-----
+ 2 s:C=GR, O=Hellenic Academic and Research Institutions CA, CN=HARICA TLS RSA Root CA 2021
+   i:C=GR, L=Athens, O=Hellenic Academic and Research Institutions Cert. Authority, CN=Hellenic Academic and Research Institutions RootCA 2015
+   a:PKEY: RSA, 4096 (bit); sigalg: sha256WithRSAEncryption
+   v:NotBefore: Sep  2 07:41:55 2021 GMT; NotAfter: Aug 31 07:41:54 2029 GMT
+-----BEGIN CERTIFICATE-----
+[...]
+-----END CERTIFICATE-----
+---
+Server certificate
+subject=C=FR, ST=Auvergne-Rhône-Alpes, L=Saint-Martin-d'Hères, O=Université Grenoble Alpes, CN=*.univ-grenoble-alpes.fr
+issuer=C=GR, O=Hellenic Academic and Research Institutions CA, CN=GEANT TLS RSA 1
+---
+No client certificate CA names sent
+Peer signing digest: SHA256
+Peer signature type: rsa_pss_rsae_sha256
+Peer Temp Key: X25519, 253 bits
+---
+SSL handshake has read 5640 bytes and written 1636 bytes
+Verification: OK
+---
+New, TLSv1.3, Cipher is TLS_AES_256_GCM_SHA384
+Protocol: TLSv1.3
+Server public key is 2048 bit
+[...]
+Verify return code: 0 (ok)
+---
+[...]
+closed
+```
+
+Les blocs Base64 des certificats et les deux _tickets_ de session envoyés après la poignée de main ont été coupés (`[...]`), car ils ne sont pas lisibles et n'apportent rien à l'analyse.
+
+La fin de la sortie résume la connexion : la chaîne a été vérifiée avec succès (`Verification: OK`, `Verify return code: 0 (ok)`). La session utilise TLS 1.3 avec la suite `TLS_AES_256_GCM_SHA384` (chiffrement symétrique AES 256 bits en mode GCM). La clé de session a été échangée avec `X25519`, une variante de Diffie-Hellman sur courbe elliptique : c'est le mécanisme décrit à la question 2.
+
+### Question 12
+
+> _Lire dans la page de manuel de `s_client` le rôle de l'option `-showcerts`. Expliquer le rôle de cette option. Après avoir parcouru le résultat de la commande, indiquer le nombre de certificats envoyés par le serveur._
+
+D'après `man openssl-s_client`, l'option `-showcerts` affiche **toute la chaîne de certificats envoyée par le serveur**, chacun au format PEM. Sans cette option, `s_client` n'affiche que le certificat du serveur lui-même. Elle permet donc de récupérer les certificats des autorités intermédiaires, que l'on ne possède pas forcément localement.
+
+Le serveur a envoyé **3 certificats**, numérotés de 0 à 2 dans la section `Certificate chain` :
+
+| N°  | Sujet (CN)                    | Rôle                                                                            | Clé      |
+| --- | ----------------------------- | ------------------------------------------------------------------------------- | -------- |
+| 0   | `*.univ-grenoble-alpes.fr`    | Certificat du serveur                                                           | RSA 2048 |
+| 1   | `GEANT TLS RSA 1`             | CA intermédiaire, qui a signé le certificat 0                                   | RSA 3072 |
+| 2   | `HARICA TLS RSA Root CA 2021` | CA racine, ici sous forme de certificat signé par l'ancienne racine HARICA 2015 | RSA 4096 |
+
+Le serveur envoie donc son certificat, mais aussi ceux des autorités qui permettent de remonter jusqu'à une racine de confiance. Le certificat 2 est particulier : `HARICA TLS RSA Root CA 2021` est une racine, mais la version envoyée par le serveur n'est pas auto-signée. Elle est signée par l'ancienne racine `Hellenic Academic and Research Institutions RootCA 2015`. On parle de **certificat croisé** (_cross-certificate_) : il permet aux clients plus anciens, qui ne connaissent que la racine de 2015, de valider quand même la chaîne.
+
+Le début de la sortie (`depth=2`, `depth=1`, `depth=0`) montre l'ordre dans lequel OpenSSL a vérifié la chaîne, de la racine jusqu'au serveur. `verify return:1` indique que chaque niveau est valide. La vérification s'arrête à `depth=2` et ne remonte pas jusqu'à la racine de 2015, car `HARICA TLS RSA Root CA 2021` est déjà présente dans le magasin de confiance de la machine.
+
+#### Extraction et lecture du certificat du serveur
+
+Plutôt que de copier-coller le bloc PEM à la main, j'ai extrait chaque certificat de la chaîne dans un fichier séparé (`cert0.pem` pour le serveur, `cert1.pem` et `cert2.pem` pour les CA) :
+
+```bash
+openssl s_client -showcerts -connect www.univ-grenoble-alpes.fr:443 </dev/null > uga.txt 2>&1
+awk '/BEGIN CERTIFICATE/{n++; f="cert" n-1 ".pem"} f{print > f} /END CERTIFICATE/{f=""}' uga.txt
+```
+
+`</dev/null` ferme immédiatement l'entrée de `s_client`, qui sinon reste connecté en attendant une saisie. Le script `awk` ouvre un nouveau fichier à chaque ligne `BEGIN CERTIFICATE` et y écrit les lignes jusqu'à `END CERTIFICATE`.
+
+On affiche ensuite le certificat du serveur dans un format lisible :
+
+```console
+[etudiant@tls-ca-palancac ~]$ openssl x509 -in cert0.pem -noout -text
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number:
+            0b:38:0b:15:48:5f:e5:14:2a:a2:e9:15:48:de:ed:3d
+        Signature Algorithm: sha256WithRSAEncryption
+        Issuer: C=GR, O=Hellenic Academic and Research Institutions CA, CN=GEANT TLS RSA 1
+        Validity
+            Not Before: Oct 20 09:03:04 2026 GMT
+            Not After : May  7 09:03:03 2027 GMT
+        Subject: C=FR, ST=Auvergne-Rhône-Alpes, L=Saint-Martin-d'Hères, O=Université Grenoble Alpes, CN=*.univ-grenoble-alpes.fr
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (2048 bit)
+                Modulus:
+                    00:a8:3b:ac:3f:bf:77:c4:e2:3c:f4:ce:e4:eb:be:
+                    [...]
+                    1c:c5
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Basic Constraints: critical
+                CA:FALSE
+            X509v3 Authority Key Identifier:
+                86:01:72:3F:8C:A9:70:E2:31:06:53:16:CE:01:5F:5B:79:C8:3C:3B
+            Authority Information Access:
+                CA Issuers - URI:http://crt.harica.gr/HARICA-GEANT-TLS-R1.cer
+            X509v3 Subject Alternative Name:
+                DNS:*.univ-grenoble-alpes.fr, DNS:univ-grenoble-alpes.fr
+            X509v3 Certificate Policies:
+                Policy: 2.23.140.1.2.2
+                Policy: 0.4.0.2042.1.7
+                Policy: 1.3.6.1.4.1.26513.1.1.1.2
+            X509v3 Extended Key Usage:
+                TLS Web Client Authentication, TLS Web Server Authentication
+            X509v3 CRL Distribution Points:
+                Full Name:
+                  URI:http://crl.harica.gr/HARICA-GEANT-TLS-R1.crl
+            X509v3 Subject Key Identifier:
+                97:DD:13:BA:7F:CC:52:79:B5:76:BE:3A:83:EF:90:38:60:C3:AD:CB
+            X509v3 Key Usage: critical
+                Digital Signature, Key Encipherment
+            CT Precertificate SCTs:
+                Signed Certificate Timestamp:
+                    Version   : v1 (0x0)
+                    Log ID    : 60:4C:9A:AF:7A:7F:77:5F:01:D4:06:FC:92:0D:C8:99:
+                                EB:0B:1C:7D:F8:C9:52:1B:FA:FA:17:77:3B:97:8B:C9
+                    Timestamp : Oct 20 09:13:06.546 2026 GMT
+                    Extensions: none
+                    Signature : ecdsa-with-SHA256
+                                [...]
+                [2 autres Signed Certificate Timestamp]
+    Signature Algorithm: sha256WithRSAEncryption
+    Signature Value:
+        37:86:2b:6c:20:b1:9e:62:a9:2f:cb:f2:ec:3e:b0:38:90:b7:
+        [...]
+        0b:de:33:6c:f2:09
+```
+
+Le module et la signature ont été raccourcis, et seule la première des trois preuves SCT est affichée.
+
+L'extension `CT Precertificate SCTs` est liée à la **_Certificate Transparency_** : avant de délivrer le certificat, la CA l'a déclaré dans trois journaux publics, gérés par des organismes indépendants. Chaque journal a renvoyé un _Signed Certificate Timestamp_ (SCT), une preuve signée (ici en ECDSA) que le certificat y a été enregistré le 20 octobre 2026. Ces journaux sont publics : le propriétaire d'un domaine peut y repérer un certificat émis à son nom sans son accord. Les navigateurs comme Chrome et Safari refusent d'ailleurs un certificat qui ne contient pas assez de SCT.
+
+### Question 13
+
+> _Que signifie le x509 dans la commande saisie ? Quel est le sujet du certificat ? Expliquer complètement la notation utilisée dans le sujet. Que signifie CN ? Quel est l'organisme qui a délivré le certificat ?_
+
+**x509** désigne la norme **X.509** de l'UIT-T, qui définit le format des certificats à clé publique utilisés par TLS. La sous-commande `openssl x509` sert à lire, afficher et convertir des certificats dans ce format. Le certificat est ici en version 3 (`Version: 3`), la seule à autoriser les extensions (`X509v3 ...`) comme le SAN.
+
+**Le sujet** du certificat est :
+
+```text
+C=FR, ST=Auvergne-Rhône-Alpes, L=Saint-Martin-d'Hères, O=Université Grenoble Alpes, CN=*.univ-grenoble-alpes.fr
+```
+
+Cette notation est un **_Distinguished Name_ (DN)**, hérité de l'annuaire X.500 dont fait partie X.509. Il s'agit d'une suite d'attributs `clé=valeur`, qui décrivent le titulaire du plus général au plus précis :
+
+| Attribut | Signification                          | Valeur                      |
+| -------- | -------------------------------------- | --------------------------- |
+| `C`      | _Country_ : pays, code ISO à 2 lettres | `FR`                        |
+| `ST`     | _State or Province_ : région           | `Auvergne-Rhône-Alpes`      |
+| `L`      | _Locality_ : ville                     | `Saint-Martin-d'Hères`      |
+| `O`      | _Organization_ : organisme titulaire   | `Université Grenoble Alpes` |
+| `CN`     | _Common Name_ : nom commun             | `*.univ-grenoble-alpes.fr`  |
+
+**CN** signifie _Common Name_. Pour un certificat de serveur, il contient le nom de domaine du site. Ici, c'est un nom **générique** (_wildcard_) : `*` remplace un niveau de sous-domaine, donc le certificat est valable pour `www.univ-grenoble-alpes.fr`, mais aussi pour `ent.univ-grenoble-alpes.fr` ou tout autre sous-domaine direct.
+
+**L'organisme qui a délivré le certificat** est indiqué dans le champ `Issuer` : il s'agit de l'autorité de certification `GEANT TLS RSA 1`, exploitée par HARICA, basée en Grèce (`C=GR`).
+
+### Question 14
+
+> _Que représente le « s », le « i » ?_
+
+Dans la section `Certificate chain`, chaque certificat est précédé de quatre lignes de résumé :
+
+| Ligne | Signification                                                     | Exemple pour le certificat 0  |
+| ----- | ----------------------------------------------------------------- | ----------------------------- |
+| `s:`  | _subject_ : le **sujet**, c'est-à-dire le titulaire du certificat | `CN=*.univ-grenoble-alpes.fr` |
+| `i:`  | _issuer_ : l'**émetteur**, c'est-à-dire la CA qui l'a signé       | `CN=GEANT TLS RSA 1`          |
+
+Ces lignes permettent de suivre la chaîne d'un coup d'œil : **l'émetteur (`i:`) du certificat n est le sujet (`s:`) du certificat n+1**. Le certificat 0 est émis par `GEANT TLS RSA 1`, qui est le sujet du certificat 1. Celui-ci est émis par `HARICA TLS RSA Root CA 2021`, sujet du certificat 2.
+
+### Question 15
+
+> _Quelle partie d'une clé RSA le certificat contient-il ? Quels algorithmes ont été utilisés pour signer le certificat ? Que contient l'attribut CN du sujet ? Quel attribut contient les autres noms de machine ? Quelle est la durée de validité du certificat ? Quelle est l'utilité du lien pointant vers un fichier .crl ?_
+
+**Partie de la clé RSA :** le certificat contient uniquement la **clé publique** du serveur (`Subject Public Key Info`) : le module n de 2048 bits (`Modulus`) et l'exposant public e = 65537 (`Exponent`). La clé privée reste sur le serveur. Un certificat est public et envoyé à chaque client : il ne doit jamais contenir d'élément secret.
+
+**Algorithmes de signature :** `sha256WithRSAEncryption`. La CA a combiné deux algorithmes :
+
+**Attribut CN :** il contient `*.univ-grenoble-alpes.fr`.
+
+**Autres noms de machine :** ils figurent dans l'extension **`X509v3 Subject Alternative Name`** (SAN) :
+
+```text
+DNS:*.univ-grenoble-alpes.fr, DNS:univ-grenoble-alpes.fr
+```
+
+Le SAN est nécessaire ici, car le _wildcard_ `*` remplace exactement un niveau : `*.univ-grenoble-alpes.fr` ne couvre pas `univ-grenoble-alpes.fr` sans préfixe. Ce nom est donc ajouté explicitement. Les navigateurs actuels ne regardent d'ailleurs plus que le SAN pour vérifier le nom du site, le CN n'étant conservé que par compatibilité.
+
+**Durée de validité :** du **20 octobre 2026** (`Not Before`) au **7 mai 2027** (`Not After`).
+
+**Lien vers le fichier .crl :** l'extension `X509v3 CRL Distribution Points` contient l'adresse `http://crl.harica.gr/HARICA-GEANT-TLS-R1.crl`. Une **CRL** (_Certificate Revocation List_) est la liste, signée par la CA, des numéros de série des certificats qu'elle a **révoqués** avant leur date d'expiration, par exemple parce que la clé privée a été volée. Le client peut télécharger cette liste et vérifier que le numéro de série du certificat (`0b:38:0b:15:...`) n'y figure pas. Sans ce mécanisme, un certificat compromis resterait accepté jusqu'à sa date de fin.
+
+Les autres extensions confirment qu'il s'agit d'un certificat de serveur : `CA:FALSE` interdit de l'utiliser pour signer d'autres certificats, `Key Usage` et `Extended Key Usage` limitent son usage à la signature, au chiffrement de clé et à l'authentification TLS.
+
+### Question 16
+
+> _Par qui le certificat de `www.univ-grenoble-alpes.fr` a-t-il été signé ? Soit E l'algorithme de chiffrement RSA, donner la formule utilisée pour calculer la signature présente dans le certificat._
+
+Le certificat a été signé par l'autorité intermédiaire **`GEANT TLS RSA 1`** (champ `Issuer`), avec **sa clé privée**. On peut le vérifier : l'`Authority Key Identifier` du certificat (`86:01:72:3F:...`) doit être égal au `Subject Key Identifier` du certificat de `GEANT TLS RSA 1`.
+
+La signature est calculée sur la partie `Data` du certificat (appelée _TBSCertificate_, _to be signed_), qui contient tous les champs sauf la signature elle-même. En notant $H$ la fonction SHA-256, $E$ le chiffrement RSA et $K_{priv}^{CA} = (n_{CA}, d_{CA})$ la clé privée de GEANT TLS RSA 1 :
+
+```math
+\text{Signature} = E_{K_{priv}^{CA}}\big(H(\text{TBSCertificate})\big) = \big(\text{pad}(H(\text{TBSCertificate}))\big)^{d_{CA}} \bmod n_{CA}
+```
+
+où `pad` est le remplissage , qui complète l'empreinte de 32 octets jusqu'à la taille du module.
+
+Pour **vérifier** la signature, le client recalcule $H(\text{TBSCertificate})$ et le compare au résultat de l'opération inverse, faite avec la clé publique de la CA :
+
+```math
+\text{Signature}^{e_{CA}} \bmod n_{CA} \stackrel{?}{=} \text{pad}(H(\text{TBSCertificate}))
+```
+
+La taille de la signature confirme qui l'a produite : la valeur affichée sous `Signature Value` fait 384 octets, soit **3072 bits**. C'est la taille de la clé de `GEANT TLS RSA 1` (`a:PKEY: RSA, 3072 (bit)`), et non celle de la clé de 2048 bits du serveur.
+
+Il ne faut pas confondre cette signature avec la ligne `Peer signature type: rsa_pss_rsae_sha256` de la sortie de `s_client`. Celle-ci est une signature produite **par le serveur**, avec sa propre clé privée, pendant la poignée de main TLS (message `CertificateVerify`). Elle prouve qu'il possède bien la clé privée correspondant au certificat, comme vu à l'étape 6 de la question 4.
+
 ## 6. Mise en place d'une PKI
 
 ## 7. Mise en place d'un reverse proxy
