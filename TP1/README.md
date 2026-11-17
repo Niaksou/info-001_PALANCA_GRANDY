@@ -8,16 +8,54 @@
 
 - [Contexte et objectifs](#contexte-et-objectifs)
 - [2. Questions préliminaires](#2-questions-préliminaires)
-  - [Question 1: Chiffrement et déchiffrement RSA](#question-1-chiffrement-et-déchiffrement-rsa)
-  - [Question 2: Rôle de Diffie-Hellman](#question-2-rôle-de-diffie-hellman)
-  - [Question 3: Informations contenues dans un certificat](#question-3-informations-contenues-dans-un-certificat)
-  - [Question 4: Authentification du site d’Alice par Bob](#question-4-authentification-du-site-dalice-par-bob)
+  - [Question 1 : Chiffrement et déchiffrement RSA](#question-1-chiffrement-et-déchiffrement-rsa)
+  - [Question 2 : Rôle de Diffie-Hellman](#question-2-rôle-de-diffie-hellman)
+  - [Question 3 : Informations contenues dans un certificat](#question-3-informations-contenues-dans-un-certificat)
+  - [Question 4 : Authentification du site d’Alice par Bob](#question-4-authentification-du-site-dalice-par-bob)
 - [3. Accès aux machines virtuelles](#3-accès-aux-machines-virtuelles)
 - [4. Étude du chiffrement RSA](#4-étude-du-chiffrement-rsa)
+  - [4.1 Génération de clés RSA](#41-génération-de-clés-rsa)
+    - [Question 5 : longueur de n et exposant public](#question-5)
+    - [Question 6 : chiffrer une clé publique ou privée](#question-6)
+    - [Question 7 : encodage PEM](#question-7)
+    - [Question 8 : intérêt d'un fichier de clé publique](#question-8)
+  - [4.2 Chiffrement asymétrique](#42-chiffrement-asymétrique)
+    - [Question 9 : clé utilisée pour la confidentialité](#question-9)
+    - [4.2.1 Partage de la clé publique avec un voisin (installation de httpd)](#421-partage-de-la-clé-publique-avec-un-voisin-installation-de-httpd)
+    - [4.2.2 Chiffrement avec la clé publique](#422-chiffrement-avec-la-clé-publique)
+      - [Question 10 : chiffrement avec pkeyutl](#question-10)
+      - [Question 11 : chiffrés différents pour un même message](#question-11)
 - [5. Analyse du contenu d'un certificat](#5-analyse-du-contenu-dun-certificat)
+  - [5.1 En ligne de commande avec openssl s_client](#51-en-ligne-de-commande-avec-openssl-s_client)
+    - [Question 12 : option -showcerts et nombre de certificats](#question-12)
+    - [Question 13 : norme X.509, sujet et émetteur](#question-13)
+    - [Question 14 : lignes s: et i:](#question-14)
+    - [Question 15 : contenu du certificat du serveur](#question-15)
+    - [Question 16 : formule de la signature](#question-16)
+    - [Question 17 : certificat de la CA intermédiaire](#question-17)
+    - [Question 18 : validation de la chaîne](#question-18)
+    - [Question 19 : certificat racine auto-signé](#question-19)
+  - [5.2 Dans un navigateur](#52-dans-un-navigateur)
 - [6. Mise en place d'une PKI](#6-mise-en-place-dune-pki)
+  - [6.1 Présentation de la PKI](#61-présentation-de-la-pki)
+  - [6.2 Étude de la CA racine (CN=Root Lorne)](#62-étude-de-la-ca-racine-cnroot-lorne)
+    - [Question 20 : certificat de Root Lorne](#question-20)
+  - [6.3 Création d'une autorité de certification intermédiaire](#63-création-dune-autorité-de-certification-intermédiaire)
+    - [Question 21 : paramètre dir et emplacements](#question-21)
+    - [Question 22 : création de la clé de la CA](#question-22)
+    - [Question 23 : signature de la demande de certificat](#question-23)
+  - [6.4 Création du certificat du serveur](#64-création-du-certificat-du-serveur)
+    - [Question 24 : machine de génération de la clé du serveur](#question-24)
 - [7. Mise en place d'un reverse proxy](#7-mise-en-place-dun-reverse-proxy)
+  - [7.1 Installation de Docker et Git](#71-installation-de-docker-et-git)
+  - [7.2 Mise en place des conteneurs pour l'infrastructure](#72-mise-en-place-des-conteneurs-pour-linfrastructure)
+  - [7.3 Mise en place de SSL](#73-mise-en-place-de-ssl)
+    - [7.3.1 Configuration de Nginx](#731-configuration-de-nginx)
+    - [7.3.2 Mise en place de la chaîne de confiance de certificat](#732-mise-en-place-de-la-chaîne-de-confiance-de-certificat)
+      - [Question 25 : pourquoi faire confiance à la CA racine](#question-25)
+      - [Question 26 : modification du fichier hosts](#question-26)
 - [8. Développement d'un client Web](#8-développement-dun-client-web)
+  - [Question 27 : scénario de tests du client](#question-27)
 - [Conclusion](#conclusion)
 
 ---
@@ -136,13 +174,13 @@ La connexion SSH aux deux machines, le changement du mot de passe du compte `etu
 
 ### 4.1 Génération de clés RSA
 
-OpenSSL n'étant pas présent sur l'image, je l'ai d'abord installé :
+OpenSSL n'étant pas présent sur l'image, nous l'avons d'abord installé :
 
 ```bash
 sudo dnf install -y openssl
 ```
 
-La page de manuel (`man openssl-genpkey`) indique que la sous-commande `genpkey` génère une bi-clé, et que la taille d'une clé RSA se règle avec l'option `-pkeyopt rsa_keygen_bits:<taille>`. La commande du sujet demandait 512 bits. Je l'ai corrigée pour générer une clé de 1024 bits :
+La page de manuel (`man openssl-genpkey`) indique que la sous-commande `genpkey` génère une bi-clé, et que la taille d'une clé RSA se règle avec l'option `-pkeyopt rsa_keygen_bits:<taille>`. La commande du sujet demandait 512 bits. Nous l'avons corrigée pour générer une clé de 1024 bits :
 
 ```bash
 openssl genpkey -algorithm RSA -out rsa_keys.pem -pkeyopt rsa_keygen_bits:1024
@@ -178,7 +216,7 @@ coefficient:
     [masqué]
 ```
 
-Les champs `privateExponent`, `prime1`, `prime2`, `exponent1`, `exponent2` et `coefficient` ont été volontairement masqués : ils constituent la clé privée (d, p et q permettent de déchiffrer et de signer à ma place) et n'ont pas leur place dans un dépôt public. Seuls `modulus` (n) et `publicExponent` (e) sont publics.
+Les champs privés (`privateExponent`, `prime1`, `prime2`, `exponent1`, `exponent2`, `coefficient`) sont masqués : seuls `modulus` (n) et `publicExponent` (e) sont publics.
 
 ### Question 5
 
@@ -202,7 +240,7 @@ Chaque champ de la sortie correspond à un paramètre RSA :
 
 ### Chiffrement de la bi-clé
 
-Le fichier `rsa_keys.pem` contient la clé privée en clair : toute personne qui y accède peut l'utiliser. Pour le protéger, je l'ai chiffré avec l'algorithme symétrique AES 128 bits, en utilisant mon login comme passphrase. La commande du sujet se terminait par un point, que j'ai retiré pour que le fichier s'appelle bien `rsa_keys_cyphered.pem` :
+Le fichier `rsa_keys.pem` contient la clé privée en clair : toute personne qui y accède peut l'utiliser. Pour le protéger, nous l'avons chiffré avec l'algorithme symétrique AES 128 bits, en utilisant notre login comme passphrase. La commande du sujet se terminait par un point, que nous avons retiré pour que le fichier s'appelle bien `rsa_keys_cyphered.pem` :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ openssl rsa -in rsa_keys.pem -aes128 -out rsa_keys_cyphered.pem
@@ -211,9 +249,7 @@ Enter pem pass phrase:
 Verifying - Enter pem pass phrase:
 ```
 
-OpenSSL relit la bi-clé (`-in`), la chiffre avec une clé AES dérivée de la passphrase (`-aes128`) et écrit le résultat dans un nouveau fichier (`-out`). La passphrase est saisie de façon interactive plutôt qu'avec l'option `-passout pass:...`, pour qu'elle n'apparaisse pas en clair dans l'historique du shell.
-
-On vérifie que le fichier est bien chiffré en comparant les en-têtes :
+La passphrase est saisie de façon interactive pour ne pas apparaître dans l'historique du shell. On vérifie que le fichier est bien chiffré :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ head -1 rsa_keys.pem rsa_keys_cyphered.pem
@@ -224,7 +260,7 @@ On vérifie que le fichier est bien chiffré en comparant les en-têtes :
 -----BEGIN ENCRYPTED PRIVATE KEY-----
 ```
 
-Le fichier en clair n'étant plus utile, je l'ai supprimé avec `rm rsa_keys.pem`. Toutes les commandes suivantes utilisent la version chiffrée et redemandent la passphrase.
+Le fichier en clair n'étant plus utile, nous l'avons supprimé avec `rm rsa_keys.pem`. Toutes les commandes suivantes utilisent la version chiffrée et redemandent la passphrase.
 
 ### Question 6
 
@@ -236,7 +272,7 @@ Chiffrer une clé privée est au contraire essentiel. Si le fichier est volé (a
 
 ### Extraction de la clé publique
 
-Pour pouvoir diffuser ma clé publique sans exposer la clé privée, je l'ai extraite dans un fichier séparé. L'option `-pubout` demande à OpenSSL de n'écrire que la partie publique. Comme la bi-clé est chiffrée, la passphrase est demandée pour la lire.
+Pour pouvoir diffuser notre clé publique sans exposer la clé privée, nous l'avons extraite dans un fichier séparé. L'option `-pubout` demande à OpenSSL de n'écrire que la partie publique. Comme la bi-clé est chiffrée, la passphrase est demandée pour la lire.
 
 ```console
 [etudiant@tls-ca-palancac ~]$ openssl rsa -in rsa_keys_cyphered.pem -pubout -out pub.pem
@@ -251,7 +287,7 @@ krK1EmBNP8c5aEnki4CMg7opcgSy3atJVWDIFa4Kro1nKmfwr4JFWmN7u+as7eBi
 -----END PUBLIC KEY-----
 ```
 
-Le fichier est bien plus court que la bi-clé : il ne contient que n et e. Contrairement à la clé privée, il peut être publié sans risque.
+Ce fichier ne contient que n et e : il peut être publié sans risque.
 
 ### Question 7
 
@@ -268,7 +304,7 @@ L'inconvénient est une taille environ 33 % plus grande que le DER binaire, à c
 
 ### Lecture de la clé publique interprétée
 
-Pour lire le contenu du fichier PEM de façon lisible, on demande à OpenSSL de le décoder. L'option `-pubin` indique que le fichier d'entrée contient une clé publique seule. Aucune passphrase n'est demandée, car ce fichier n'est pas chiffré.
+L'option `-pubin` indique que le fichier contient une clé publique seule (aucune passphrase n'est demandée) :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ openssl rsa -pubin -in pub.pem -text -noout
@@ -301,9 +337,9 @@ Disposer d'un fichier séparé est intéressant pour plusieurs raisons :
 
 - **On peut le diffuser librement** (serveur web, mail, dépôt Git) sans jamais exposer la clé privée.
 - **Il est lisible sans passphrase**, ce qui est indispensable pour que d'autres personnes puissent s'en servir.
-- **C'est ce dont ont besoin mes correspondants** : chiffrer un message qu'ils me destinent, ou vérifier une signature que j'ai produite. C'est aussi ce qu'une CA place dans un certificat.
+- **C'est ce dont ont besoin nos correspondants** : chiffrer un message qu'ils nous destinent, ou vérifier une signature que nous avons produite. C'est aussi ce qu'une CA place dans un certificat.
 
-Le fichier a ensuite été renommé avec mon login, pour qu'il ne se confonde pas avec celui de mon voisin lors de l'échange :
+Le fichier a ensuite été renommé avec le login `palancac`, pour qu'il ne se confonde pas avec celui de Kylian lors de l'échange :
 
 ```bash
 mv pub.pem pub.palancac.pem
@@ -344,8 +380,6 @@ success
 [etudiant@tls-ca-palancac ~]$ sudo cp pub.palancac.pem /var/www/html/pub.palancac.pem
 ```
 
-L'installation d'Apache 2.4.63 a ajouté 12 paquets (httpd et ses dépendances). Les deux `success` confirment l'ouverture du port 80, et les commandes `systemctl` et `cp` n'affichent rien lorsqu'elles réussissent.
-
 | Commande                                     | Rôle                                                                                                   |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `dnf install -y httpd`                       | Installe le serveur web Apache                                                                         |
@@ -384,22 +418,18 @@ J+B+mhPM6epuzVS8e/XY2t7llL0cEtTiqRGW3beRGY2dYTiv3p5PHLag5/CouJ+r
 -----END PUBLIC KEY-----
 ```
 
-L'option `-O` enregistre le fichier sous son nom d'origine, et `-f` fait échouer `curl` en cas d'erreur HTTP. Sans elle, une page « 404 Not Found » aurait été enregistrée à la place de la clé, comme cela m'est arrivé lors d'un premier essai avec une mauvaise adresse IP.
+L'option `-O` enregistre le fichier sous son nom d'origine, et `-f` fait échouer `curl` en cas d'erreur HTTP (sinon une page d'erreur serait enregistrée à la place de la clé).
 
-L'échange a été testé depuis les deux postes. Kylian a récupéré de la même façon ma clé publique depuis sa machine :
+Kylian a récupéré ma clé publique de la même façon :
 
 ```console
 [etudiant@tls-ca-kgrandy ~]$ curl -fO http://192.168.170.85/pub.palancac.pem
 100   272  100   272    0     0  53872      0 --:--:-- --:--:-- --:--:-- 54400
 ```
 
-Chacun dispose ainsi de la clé publique de l'autre, et le fichier reçu est identique à celui publié (272 octets, même contenu).
-
-Publier une clé publique sur un serveur web ne pose aucun problème de sécurité, puisqu'elle est faite pour être diffusée. En revanche, rien ne garantit ici que la clé récupérée appartient bien au voisin : c'est précisément le rôle des certificats, étudiés dans la suite du TP.
+Publier une clé publique ne pose aucun problème de sécurité. En revanche, rien ne garantit ici que la clé récupérée appartient bien au voisin : c'est le rôle des certificats, étudiés dans la suite du TP.
 
 #### 4.2.2 Chiffrement avec la clé publique
-
-Maintenant que je dispose de la clé publique de Kylian, je peux lui envoyer un message que lui seul pourra lire.
 
 ### Question 10
 
@@ -422,7 +452,7 @@ J'ai d'abord créé le message en clair, puis je l'ai chiffré avec la clé publ
 [etudiant@tls-ca-palancac ~]$ openssl pkeyutl -encrypt -pubin -inkey pub.kgrandy.pem -in clair.txt -out cipher.bin
 ```
 
-Le fichier obtenu est binaire et ne peut pas être affiché avec `cat`. On le visualise donc avec `hexdump`. L'option `-C` affiche en plus, à droite, la traduction ASCII de chaque octet :
+Le fichier est binaire : je l'affiche avec `hexdump -C` (hexadécimal et ASCII) :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ hexdump -C cipher.bin
@@ -437,7 +467,7 @@ Le fichier obtenu est binaire et ne peut pas être affiché avec `cat`. On le vi
 00000080
 ```
 
-**Le contenu est illisible.** Aucun fragment du message d'origine (« Bonjour », « PALANCA »…) n'apparaît dans la colonne ASCII : les octets semblent aléatoires.
+Le contenu est illisible : aucun fragment du message n'apparaît dans la colonne ASCII.
 
 ### Question 11
 
@@ -462,13 +492,13 @@ cipher.bin.1 cipher.bin.2 differ: byte 1, line 1
 
 Les trois fichiers ont la même taille (128 octets), mais leur contenu est **différent**. `cmp` signale une différence dès le premier octet, et les trois empreintes SHA-256 n'ont rien en commun.
 
-**C'est normal, et c'est même voulu.** Avant d'appliquer le calcul $C = M^e \bmod n$, OpenSSL ne chiffre pas le message brut : il le complète avec un **remplissage** (_padding_) qui contient des octets aléatoires. Le bloc réellement chiffré a la forme suivante :
+**C'est normal, et c'est même voulu.** Avant d'appliquer le calcul $C = M^e \bmod n$, OpenSSL ne chiffre pas le message brut : il le complète avec un **remplissage** (_padding_ PKCS#1 v1.5) qui contient des octets aléatoires. Le bloc réellement chiffré a la forme suivante :
 
 ```text
 00 | 02 | PS (au moins 8 octets aléatoires non nuls) | 00 | message
 ```
 
-PS est tiré au hasard à chaque chiffrement : le nombre M réellement chiffré change donc à chaque fois, et le chiffré C aussi. Au déchiffrement, Kylian retrouve ce bloc complet, retire le remplissage et récupère le message d'origine.
+PS est tiré au hasard à chaque chiffrement, donc le chiffré change à chaque fois. Le remplissage est retiré au déchiffrement.
 
 Sans cet aléa, RSA serait **déterministe** : un même message donnerait toujours le même chiffré, ce qui poserait deux problèmes :
 
@@ -483,7 +513,7 @@ J'ai publié mon chiffré sur le serveur web, sous un nom contenant mon login po
 sudo cp cipher.bin /var/www/html/cipher.palancac.bin
 ```
 
-Kylian l'a téléchargé depuis sa machine. Avec sa propre bi-clé chiffrée, le déchiffrement fonctionne. La passphrase est demandée, puisque la clé privée est protégée par AES :
+Kylian l'a téléchargé et déchiffré avec sa clé privée :
 
 ```console
 [etudiant@tls-ca-kgrandy ~]$ openssl pkeyutl -decrypt -inkey rsa_keys_cyphered.pem -in cipher.palancac.bin -out dechiffre.txt
@@ -492,7 +522,7 @@ Enter pass phrase for rsa_keys_cyphered.pem:
 Bonjour de Clément PALANCA
 ```
 
-De mon côté, j'ai récupéré le chiffré de Kylian et l'ai déchiffré de la même façon, avec ma clé privée :
+J'ai récupéré le chiffré de Kylian et l'ai déchiffré avec ma clé privée (`-decrypt`, sans `-pubin` puisque la bi-clé contient la clé privée) :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ curl -fO http://192.168.170.219/cipher.kgrandy.bin
@@ -503,26 +533,15 @@ Enter pass phrase for rsa_keys_cyphered.pem:
 Bonjour de GRANDY Kylian
 ```
 
-Les options de déchiffrement reprennent celles du chiffrement :
-
-| Option                         | Rôle                                                                           |
-| ------------------------------ | ------------------------------------------------------------------------------ |
-| `-decrypt`                     | Déchiffre les données d'entrée avec une clé privée                             |
-| `-inkey rsa_keys_cyphered.pem` | Ma bi-clé. Pas besoin de `-pubin`, car le fichier contient bien une clé privée |
-| `-in cipher.kgrandy.bin`       | Le message chiffré reçu                                                        |
-| `-out dechiffre.txt`           | Le fichier où est écrit le message déchiffré                                   |
-
-Les deux messages ont été retrouvés à l'identique, accents compris : l'échange confidentiel fonctionne dans les deux sens. Chaque chiffré a été transmis en clair sur le réseau, via HTTP, sans que cela compromette le message : sans la clé privée du destinataire, ces 128 octets sont inexploitables.
-
-Une limite subsiste toutefois : rien ne prouve que le message vient bien de la personne qui prétend l'avoir envoyé. N'importe qui disposant de la clé publique de Kylian aurait pu lui écrire « Bonjour de Clément PALANCA ». Pour garantir l'origine d'un message, il faudrait le signer avec sa clé privée.
+Les deux messages sont retrouvés à l'identique : l'échange confidentiel fonctionne dans les deux sens, alors que les chiffrés ont transité en clair via HTTP. En revanche, rien ne prouve l'origine d'un message : n'importe qui connaissant la clé publique de Kylian aurait pu lui écrire. Il faudrait signer le message avec la clé privée de l'expéditeur.
 
 ## 5. Analyse du contenu d'un certificat
 
-Cette partie étudie les informations contenues dans un certificat réel et la façon dont sa validité est vérifiée. Les manipulations sont faites depuis la machine `tls-ca-palancac`.
+Les manipulations sont faites depuis `tls-ca-palancac`.
 
 ### 5.1 En ligne de commande avec `openssl s_client`
 
-La sous-commande `s_client` d'OpenSSL se comporte comme un client TLS minimal : elle ouvre une connexion TLS vers un serveur et affiche tout ce qui se passe pendant la poignée de main.
+`openssl s_client` est un client TLS minimal qui affiche le déroulement de la poignée de main :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ openssl s_client -showcerts -connect www.univ-grenoble-alpes.fr:443
@@ -582,9 +601,7 @@ Verify return code: 0 (ok)
 closed
 ```
 
-Les blocs Base64 des certificats et les deux _tickets_ de session envoyés après la poignée de main ont été coupés (`[...]`), car ils ne sont pas lisibles et n'apportent rien à l'analyse.
-
-La fin de la sortie résume la connexion : la chaîne a été vérifiée avec succès (`Verification: OK`, `Verify return code: 0 (ok)`). La session utilise TLS 1.3 avec la suite `TLS_AES_256_GCM_SHA384` (chiffrement symétrique AES 256 bits en mode GCM). La clé de session a été échangée avec `X25519`, une variante de Diffie-Hellman sur courbe elliptique : c'est le mécanisme décrit à la question 2.
+Les blocs Base64 et les tickets de session ont été coupés (`[...]`). La chaîne est vérifiée (`Verify return code: 0 (ok)`), la session utilise TLS 1.3 avec `TLS_AES_256_GCM_SHA384`, et la clé de session est échangée avec `X25519` (Diffie-Hellman sur courbe elliptique, question 2).
 
 ### Question 12
 
@@ -594,11 +611,11 @@ D'après `man openssl-s_client`, l'option `-showcerts` affiche **toute la chaîn
 
 Le serveur a envoyé **3 certificats**, numérotés de 0 à 2 dans la section `Certificate chain` :
 
-| N°  | Sujet (CN)                    | Rôle                                                                            | Clé      |
-| --- | ----------------------------- | ------------------------------------------------------------------------------- | -------- |
-| 0   | `*.univ-grenoble-alpes.fr`    | Certificat du serveur                                                           | RSA 2048 |
-| 1   | `GEANT TLS RSA 1`             | CA intermédiaire, qui a signé le certificat 0                                   | RSA 3072 |
-| 2   | `HARICA TLS RSA Root CA 2021` | CA racine, ici sous forme de certificat signé par l'ancienne racine HARICA 2015 | RSA 4096 |
+| N° | Sujet (CN)                    | Rôle                                                                            | Clé      |
+| -- | ----------------------------- | ------------------------------------------------------------------------------- | -------- |
+| 0  | `*.univ-grenoble-alpes.fr`    | Certificat du serveur                                                           | RSA 2048 |
+| 1  | `GEANT TLS RSA 1`             | CA intermédiaire, qui a signé le certificat 0                                   | RSA 3072 |
+| 2  | `HARICA TLS RSA Root CA 2021` | CA racine, ici sous forme de certificat signé par l'ancienne racine HARICA 2015 | RSA 4096 |
 
 Le serveur envoie donc son certificat, mais aussi ceux des autorités qui permettent de remonter jusqu'à une racine de confiance. Le certificat 2 est particulier : `HARICA TLS RSA Root CA 2021` est une racine, mais la version envoyée par le serveur n'est pas auto-signée. Elle est signée par l'ancienne racine `Hellenic Academic and Research Institutions RootCA 2015`. On parle de **certificat croisé** (_cross-certificate_) : il permet aux clients plus anciens, qui ne connaissent que la racine de 2015, de valider quand même la chaîne.
 
@@ -606,16 +623,14 @@ Le début de la sortie (`depth=2`, `depth=1`, `depth=0`) montre l'ordre dans leq
 
 #### Extraction et lecture du certificat du serveur
 
-Plutôt que de copier-coller le bloc PEM à la main, j'ai extrait chaque certificat de la chaîne dans un fichier séparé (`cert0.pem` pour le serveur, `cert1.pem` et `cert2.pem` pour les CA) :
+Plutôt que de copier-coller le bloc PEM à la main, nous avons extrait chaque certificat de la chaîne dans un fichier séparé (`cert0.pem` pour le serveur, `cert1.pem` et `cert2.pem` pour les CA) :
 
 ```bash
 openssl s_client -showcerts -connect www.univ-grenoble-alpes.fr:443 </dev/null > uga.txt 2>&1
 awk '/BEGIN CERTIFICATE/{n++; f="cert" n-1 ".pem"} f{print > f} /END CERTIFICATE/{f=""}' uga.txt
 ```
 
-`</dev/null` ferme immédiatement l'entrée de `s_client`, qui sinon reste connecté en attendant une saisie. Le script `awk` ouvre un nouveau fichier à chaque ligne `BEGIN CERTIFICATE` et y écrit les lignes jusqu'à `END CERTIFICATE`.
-
-On affiche ensuite le certificat du serveur dans un format lisible :
+`</dev/null` ferme l'entrée de `s_client` pour qu'il se termine, et `awk` écrit chaque bloc PEM dans un fichier séparé. Nous affichons ensuite le certificat du serveur :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ openssl x509 -in cert0.pem -noout -text
@@ -677,9 +692,7 @@ Certificate:
         0b:de:33:6c:f2:09
 ```
 
-Le module et la signature ont été raccourcis, et seule la première des trois preuves SCT est affichée.
-
-L'extension `CT Precertificate SCTs` est liée à la **_Certificate Transparency_** : avant de délivrer le certificat, la CA l'a déclaré dans trois journaux publics, gérés par des organismes indépendants. Chaque journal a renvoyé un _Signed Certificate Timestamp_ (SCT), une preuve signée (ici en ECDSA) que le certificat y a été enregistré le 20 octobre 2026. Ces journaux sont publics : le propriétaire d'un domaine peut y repérer un certificat émis à son nom sans son accord. Les navigateurs comme Chrome et Safari refusent d'ailleurs un certificat qui ne contient pas assez de SCT.
+Le module et la signature ont été raccourcis. Seule la première des trois preuves SCT (_Certificate Transparency_ : enregistrement du certificat dans des journaux publics) est affichée.
 
 ### Question 13
 
@@ -726,7 +739,7 @@ Ces lignes permettent de suivre la chaîne d'un coup d'œil : **l'émetteur (`i:
 
 **Partie de la clé RSA :** le certificat contient uniquement la **clé publique** du serveur (`Subject Public Key Info`) : le module n de 2048 bits (`Modulus`) et l'exposant public e = 65537 (`Exponent`). La clé privée reste sur le serveur. Un certificat est public et envoyé à chaque client : il ne doit jamais contenir d'élément secret.
 
-**Algorithmes de signature :** `sha256WithRSAEncryption`. La CA a combiné deux algorithmes :
+**Algorithmes de signature :** `sha256WithRSAEncryption`, c'est-à-dire un haché SHA-256 du certificat, signé avec RSA.
 
 **Attribut CN :** il contient `*.univ-grenoble-alpes.fr`.
 
@@ -736,11 +749,11 @@ Ces lignes permettent de suivre la chaîne d'un coup d'œil : **l'émetteur (`i:
 DNS:*.univ-grenoble-alpes.fr, DNS:univ-grenoble-alpes.fr
 ```
 
-Le SAN est nécessaire ici, car le _wildcard_ `*` remplace exactement un niveau : `*.univ-grenoble-alpes.fr` ne couvre pas `univ-grenoble-alpes.fr` sans préfixe. Ce nom est donc ajouté explicitement. Les navigateurs actuels ne regardent d'ailleurs plus que le SAN pour vérifier le nom du site, le CN n'étant conservé que par compatibilité.
+Le _wildcard_ ne couvre pas `univ-grenoble-alpes.fr` sans préfixe, d'où la seconde entrée. Les navigateurs ne vérifient plus que le SAN.
 
-**Durée de validité :** du **20 octobre 2026** (`Not Before`) au **7 mai 2027** (`Not After`).
+**Durée de validité :** du **20 octobre 2026** (`Not Before`) au **7 mai 2027** (`Not After`), soit 199 jours, sous la limite de 200 jours imposée aux CA publiques par le CA/Browser Forum.
 
-**Lien vers le fichier .crl :** l'extension `X509v3 CRL Distribution Points` contient l'adresse `http://crl.harica.gr/HARICA-GEANT-TLS-R1.crl`. Une **CRL** (_Certificate Revocation List_) est la liste, signée par la CA, des numéros de série des certificats qu'elle a **révoqués** avant leur date d'expiration, par exemple parce que la clé privée a été volée. Le client peut télécharger cette liste et vérifier que le numéro de série du certificat (`0b:38:0b:15:...`) n'y figure pas. Sans ce mécanisme, un certificat compromis resterait accepté jusqu'à sa date de fin.
+**Lien vers le fichier .crl :** l'extension `X509v3 CRL Distribution Points` contient l'adresse `http://crl.harica.gr/HARICA-GEANT-TLS-R1.crl`. Une **CRL** (_Certificate Revocation List_) est la liste, signée par la CA, des numéros de série des certificats qu'elle a **révoqués** avant leur date d'expiration, par exemple parce que la clé privée a été volée. Le client vérifie que le numéro de série du certificat n'y figure pas.
 
 Les autres extensions confirment qu'il s'agit d'un certificat de serveur : `CA:FALSE` interdit de l'utiliser pour signer d'autres certificats, `Key Usage` et `Extended Key Usage` limitent son usage à la signature, au chiffrement de clé et à l'authentification TLS.
 
@@ -756,7 +769,7 @@ La signature est calculée sur la partie `Data` du certificat (appelée _TBSCert
 \text{Signature} = E_{K_{priv}^{CA}}\big(H(\text{TBSCertificate})\big) = \big(\text{pad}(H(\text{TBSCertificate}))\big)^{d_{CA}} \bmod n_{CA}
 ```
 
-où `pad` est le remplissage , qui complète l'empreinte de 32 octets jusqu'à la taille du module.
+où `pad` est le remplissage PKCS#1 v1.5, qui complète l'empreinte de 32 octets jusqu'à la taille du module.
 
 Pour **vérifier** la signature, le client recalcule $H(\text{TBSCertificate})$ et le compare au résultat de l'opération inverse, faite avec la clé publique de la CA :
 
@@ -766,13 +779,13 @@ Pour **vérifier** la signature, le client recalcule $H(\text{TBSCertificate})$ 
 
 La taille de la signature confirme qui l'a produite : la valeur affichée sous `Signature Value` fait 384 octets, soit **3072 bits**. C'est la taille de la clé de `GEANT TLS RSA 1` (`a:PKEY: RSA, 3072 (bit)`), et non celle de la clé de 2048 bits du serveur.
 
-Il ne faut pas confondre cette signature avec la ligne `Peer signature type: rsa_pss_rsae_sha256` de la sortie de `s_client`. Celle-ci est une signature produite **par le serveur**, avec sa propre clé privée, pendant la poignée de main TLS (message `CertificateVerify`). Elle prouve qu'il possède bien la clé privée correspondant au certificat, comme vu à l'étape 6 de la question 4.
+À ne pas confondre avec la ligne `Peer signature type: rsa_pss_rsae_sha256` de `s_client` : c'est la signature `CertificateVerify` produite par le serveur pendant la poignée de main (question 4).
 
 ### Question 17
 
 > _Afficher le certificat de la CA qui a délivré le certificat de `www.univ-grenoble-alpes.fr`. Relever le sujet de ce certificat. Quelle est la taille de la clé publique présente dans ce certificat ? Par quelle CA ce certificat a-t-il été signé ?_
 
-Le certificat de la CA émettrice est le deuxième de la chaîne envoyée par le serveur, extrait dans `cert1.pem`. Plutôt que d'afficher tout le certificat, j'ai demandé à OpenSSL uniquement les champs utiles :
+Le certificat de la CA émettrice est le deuxième de la chaîne envoyée par le serveur, extrait dans `cert1.pem`. Plutôt que d'afficher tout le certificat, nous avons demandé à OpenSSL uniquement les champs utiles :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ openssl x509 -in cert1.pem -noout -subject -issuer -dates
@@ -816,7 +829,7 @@ Ici, le certificat de niveau n est celui de l'émetteur, et le certificat de niv
 1. **Le sujet du certificat n est égal à l'émetteur du certificat n−1.** C'est ce lien qui permet de construire la chaîne.
 2. **Le certificat n contient la clé publique qui vérifie la signature du certificat n−1.** Pour la retrouver sans ambiguïté, chaque certificat porte deux identifiants de clé : le _Subject Key Identifier_ (SKI) identifie sa propre clé, et l'_Authority Key Identifier_ (AKI) identifie la clé de l'émetteur. L'AKI du certificat n−1 doit donc être égal au SKI du certificat n.
 
-J'ai affiché ces quatre champs pour les trois certificats de la chaîne :
+Nous avons affiché ces quatre champs pour les trois certificats de la chaîne :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ for i in 0 1 2; do
@@ -860,7 +873,7 @@ Les sujets et émetteurs concordent de la même façon. Chaque certificat de la 
 
 #### Recherche de la racine dans le magasin de confiance
 
-La page de manuel de `update-ca-trust` indique que les certificats de confiance sont regroupés dans `/etc/pki/ca-trust/extracted/`, et cite le fichier `openssl/ca-bundle.trust.crt`. Ce fichier n'existe pas sur la version d'Alma Linux utilisée : le dossier `openssl/` ne contient plus qu'un `README`. J'ai donc utilisé le fichier `pem/tls-ca-bundle.pem`, décrit dans la même page comme contenant les CA de confiance pour l'authentification des serveurs TLS :
+La page de manuel de `update-ca-trust` indique que les certificats de confiance sont regroupés dans `/etc/pki/ca-trust/extracted/`, et cite le fichier `openssl/ca-bundle.trust.crt`. Ce fichier n'existe pas sur la version d'Alma Linux utilisée : le dossier `openssl/` ne contient plus qu'un `README`. Nous avons donc utilisé le fichier `pem/tls-ca-bundle.pem`, décrit dans la même page comme contenant les CA de confiance pour l'authentification des serveurs TLS :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ man update-ca-trust | grep -n -B1 -A4 "extracted/"
@@ -888,7 +901,7 @@ dr-xr-xr-x. 2 root root  16384 Aug 27  2025 directory-hash
 -r--r--r--. 1 root root 226489 Aug 27  2025 tls-ca-bundle.pem
 ```
 
-Ce fichier contient plusieurs centaines de certificats à la suite. Je l'ai découpé en un fichier par certificat, puis j'ai cherché ceux de HARICA :
+Ce fichier contient plusieurs centaines de certificats à la suite. Nous l'avons découpé en un fichier par certificat, puis nous avons cherché ceux de HARICA :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ mkdir -p ~/store && cd ~/store
@@ -904,9 +917,9 @@ ca078.pem : subject=C=GR, L=Athens, O=Hellenic Academic and Research Institution
 ca079.pem : subject=C=GR, L=Athens, O=Hellenic Academic and Research Institutions Cert. Authority, CN=Hellenic Academic and Research Institutions RootCA 2015
 ```
 
-Le certificat qui valide `cert2` est `Hellenic Academic and Research Institutions RootCA 2015`, en version RSA (`ca079.pem`). Il se trouve dans le magasin de confiance du système, `/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem`, installé avec le paquet `ca-certificates`. Les variantes ECC (`ca076`, `ca078`) correspondent à d'autres racines HARICA, à base de courbes elliptiques.
+Le certificat qui valide `cert2` est `Hellenic Academic and Research Institutions RootCA 2015`, en version RSA (`ca079.pem`). Il se trouve dans le magasin de confiance du système, `/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem` (paquet `ca-certificates`).
 
-On constate aussi que **`HARICA TLS RSA Root CA 2021` est elle-même présente dans le magasin** (`ca077.pem`), cette fois sous forme de certificat auto-signé. Le client n'a donc même pas besoin de remonter jusqu'à la racine de 2015, comme le montre la vérification de la chaîne :
+`HARICA TLS RSA Root CA 2021` est elle-même présente dans le magasin (`ca077.pem`), en version auto-signée : le client n'a pas besoin de remonter jusqu'à la racine de 2015.
 
 ```console
 [etudiant@tls-ca-palancac ~]$ openssl verify -show_chain -untrusted cert1.pem cert0.pem
@@ -917,9 +930,9 @@ depth=1: C=GR, O=Hellenic Academic and Research Institutions CA, CN=GEANT TLS RS
 depth=2: C=GR, O=Hellenic Academic and Research Institutions CA, CN=HARICA TLS RSA Root CA 2021
 ```
 
-L'option `-untrusted cert1.pem` fournit le certificat intermédiaire sans lui accorder de confiance : il sert seulement à construire la chaîne. Les niveaux 0 et 1 sont marqués `(untrusted)`, car ils viennent de fichiers fournis par l'utilisateur. Le niveau 2 ne l'est pas : OpenSSL l'a trouvé dans le magasin de confiance, où il s'arrête. C'est pour cela que `s_client` s'arrêtait déjà à `depth=2` à la question 12.
+`-untrusted` fournit l'intermédiaire sans lui accorder de confiance. Le niveau 2 n'est pas marqué `(untrusted)` : OpenSSL l'a trouvé dans le magasin, d'où l'arrêt à `depth=2` à la question 12.
 
-Les deux versions de `HARICA TLS RSA Root CA 2021` (celle signée par la racine de 2015, envoyée par le serveur, et la version auto-signée du magasin) contiennent la **même clé publique**. Elles ont le même SKI, `0A:48:23:A6:…`, qui correspond aussi à l'AKI de `cert1` :
+Les deux versions de `HARICA TLS RSA Root CA 2021` (croisée et auto-signée) ont le même SKI `0A:48:23:A6:…`, donc la même clé publique :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ openssl x509 -in ~/store/ca077.pem -noout -subject -issuer -ext subjectKeyIdentifier
@@ -929,11 +942,11 @@ X509v3 Subject Key Identifier:
     0A:48:23:A6:60:A4:92:0A:33:EA:93:5B:C5:57:EA:25:4D:BD:12:EE
 ```
 
-N'importe laquelle des deux peut donc valider la signature de `GEANT TLS RSA 1`. C'est tout l'intérêt du certificat croisé : un système récent fait confiance directement à la racine de 2021, et un système plus ancien, qui ne connaît que la racine de 2015, peut quand même valider la chaîne grâce à `cert2`.
+C'est l'intérêt du certificat croisé : un système récent s'arrête à la racine de 2021, un système ancien remonte jusqu'à celle de 2015 grâce à `cert2`.
 
 #### Extraction du certificat de la CA racine
 
-J'ai copié le certificat de la racine `Hellenic Academic and Research Institutions RootCA 2015`, trouvé à l'étape précédente, dans le fichier `root-ca1.pem`, puis j'ai affiché son contenu :
+Nous avons copié le certificat de la racine `Hellenic Academic and Research Institutions RootCA 2015`, trouvé à l'étape précédente, dans le fichier `root-ca1.pem`, puis nous avons affiché son contenu :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ cp ~/store/ca079.pem root-ca1.pem
@@ -965,7 +978,7 @@ X509v3 Subject Key Identifier:
     71:15:67:C8:C8:C9:BD:75:5D:72:D0:38:18:6A:9D:F3:71:24:54:0B
 ```
 
-Le SKI de cette racine, `71:15:67:C8:…`, est bien égal à l'AKI de `cert2` relevé à la question 18. Pour le confirmer, j'ai demandé à OpenSSL de vérifier `cert2` en utilisant **uniquement** `root-ca1.pem` comme autorité de confiance. Les options `-no-CApath -no-CAstore` désactivent le magasin du système :
+Le SKI de cette racine, `71:15:67:C8:…`, est bien égal à l'AKI de `cert2` relevé à la question 18. Pour le confirmer, nous avons demandé à OpenSSL de vérifier `cert2` en utilisant **uniquement** `root-ca1.pem` comme autorité de confiance. Les options `-no-CApath -no-CAstore` désactivent le magasin du système :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ openssl verify -no-CApath -no-CAstore -CAfile root-ca1.pem cert2.pem
@@ -1010,11 +1023,11 @@ La vérification utilise la clé publique $(n_{root}, e_{root})$, qui se trouve 
 
 **Ce type de certificat s'appelle un certificat auto-signé** (_self-signed certificate_), et ici plus précisément un **certificat racine** (_root certificate_).
 
-Cette auto-signature ne prouve rien sur l'identité du titulaire : n'importe qui peut créer un certificat auto-signé au nom de HARICA. Elle prouve seulement l'intégrité du certificat et la possession de la clé privée. La confiance dans une racine ne vient donc pas de sa signature, mais de **sa présence dans le magasin de confiance**. Ce magasin est fourni par le système d'exploitation (ici le paquet `ca-certificates` d'Alma Linux) ou par le navigateur, qui n'y intègrent une CA qu'après des audits de sécurité. C'est pour cela que la racine n'a pas besoin d'être envoyée par le serveur pendant la poignée de main TLS : elle doit déjà se trouver chez le client.
+Cette auto-signature ne prouve rien sur l'identité du titulaire : la confiance vient de **la présence du certificat dans le magasin de confiance** du système ou du navigateur, qui n'y intègrent une CA qu'après audit. C'est pourquoi la racine n'a pas besoin d'être envoyée par le serveur.
 
 ### 5.2 Dans un navigateur
 
-L'onglet « Général » du lecteur affiche les informations suivantes, que je compare à celles obtenues avec OpenSSL :
+J'ai affiché dans Chrome le certificat de `https://www.univ-grenoble-alpes.fr`. L'onglet « Général » du lecteur de certificat donne les informations suivantes :
 
 | Information             | Chrome (« Lecteur du certificat »)                                 | OpenSSL (`cert0.pem`)                                              |
 | ----------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
@@ -1027,7 +1040,7 @@ L'onglet « Général » du lecteur affiche les informations suivantes, que je c
 | Empreinte du certificat | `5716ad84d1bffda30b99098995d1a064ac19adabfdc19add30e5b3612ac7e342` | `57:16:AD:84:D1:BF:FD:A3:…:2A:C7:E3:42`                            |
 | Empreinte de la clé     | `a0a4174f66ef9de3660a18ff161b8aec805ff374b88789bf0b8f4cf8f2feea57` | `a0a4174f66ef9de3660a18ff161b8aec805ff374b88789bf0b8f4cf8f2feea57` |
 
-Les informations sont identiques. Les heures diffèrent de deux heures, car Chrome les affiche dans le fuseau horaire local (heure d'été de Paris, UTC+2), alors qu'OpenSSL les affiche en temps universel (GMT). La ligne « Unité d'organisation (OU) : &lt;Ne fait pas partie du certificat&gt; » correspond à l'absence d'attribut `OU` dans le sujet et l'émetteur, que l'on avait déjà constatée à la question 13.
+Les informations sont identiques. Les heures diffèrent de deux heures, car Chrome les affiche dans le fuseau horaire local (heure d'été de Paris, UTC+2), alors qu'OpenSSL les affiche en temps universel (GMT).
 
 Les empreintes SHA-256 permettent de prouver qu'il s'agit **exactement du même certificat**, et pas seulement d'un certificat portant les mêmes noms. Je les ai recalculées avec OpenSSL à partir du fichier `cert0.pem` :
 
@@ -1041,17 +1054,13 @@ SHA2-256(stdin)= a0a4174f66ef9de3660a18ff161b8aec805ff374b88789bf0b8f4cf8f2feea5
 - **L'empreinte du certificat** est le haché SHA-256 du certificat complet, encodé en DER. Changer un seul bit du certificat (une date, un nom, la signature…) changerait totalement cette valeur. Les deux empreintes sont identiques : Chrome et OpenSSL ont reçu le même certificat.
 - **L'empreinte de la clé publique** est le haché du seul bloc `Subject Public Key Info`. Elle reste identique si le certificat est renouvelé avec la même clé. C'est pourquoi elle sert notamment à « épingler » une clé (_public key pinning_).
 
-Le navigateur et OpenSSL donnent donc la même vision du certificat. Le navigateur est plus pratique pour une vérification rapide, alors qu'OpenSSL permet d'extraire les certificats, de les manipuler et d'automatiser les vérifications.
-
 ## 6. Mise en place d'une PKI
 
 ### 6.1 Présentation de la PKI
 
-La PKI reproduit, à petite échelle, la structure observée à la section 5 :
-
 ```text
 Root Lorne                    (CA racine, gérée par l'enseignant)
-   └── RA palancac            (ma CA intermédiaire, signée par Root Lorne)
+   └── RA palancac            (notre CA intermédiaire, signée par Root Lorne)
           └── www.palancac.fr (certificat du serveur web, signé par RA palancac)
 ```
 
@@ -1065,7 +1074,7 @@ Bien qu'elle s'appelle « racine », `Root Lorne` n'est présente dans aucun mag
 
 ### 6.2 Étude de la CA racine (CN=Root Lorne)
 
-La CA racine est installée par l'enseignant sur une machine dédiée (`root-ca-tp`, `192.168.170.231`). Je m'y suis connecté en SSH depuis `tls-ca-palancac` avec le compte `camanager` fourni dans le sujet :
+La CA racine est installée sur une machine dédiée (`root-ca-tp`, `192.168.170.231`). Nous nous y sommes connectés en SSH depuis `tls-ca-palancac` avec le compte `camanager` fourni dans le sujet :
 
 ```bash
 ssh camanager@192.168.170.231
@@ -1127,7 +1136,7 @@ Chaque élément a un rôle précis dans le fonctionnement de la CA :
 
 #### Fichier de configuration `openssl.cnf`
 
-Les concepteurs d'OpenSSL fournissent, avec la commande `openssl ca`, de quoi gérer une « petite » autorité de certification. Ses paramètres sont regroupés dans `openssl.cnf`. Voici les lignes qui nous intéressent :
+Les concepteurs d'OpenSSL fournissent, avec la commande `openssl ca`, de quoi gérer une « petite » autorité de certification. Ses paramètres sont regroupés dans `openssl.cnf`. Les lignes utiles :
 
 ```console
 [camanager@root-ca-tp ca]$ grep -nE "^\s*(dir|certificate|private_key|policy)\s*=" openssl.cnf
@@ -1195,26 +1204,22 @@ Certificate:
         e3:2e:37:08:24:73:9d:43:32:01:78:a5:fd:ce:eb:10
 ```
 
-Les accents du nom s'affichent mal (`ChambÃ©ry`, `TP SÃ©curitÃ©`) : c'est le symptôme classique d'un texte UTF-8 encodé deux fois. Le « é » (octets `C3 A9`) a été relu comme deux caractères Latin-1, « Ã » et « © », puis réencodé en UTF-8. Ce défaut d'encodage vient de la création du certificat de la racine ou de l'affichage, et ne change rien à la validité cryptographique du certificat.
-
 ### Question 20
 
 > _Quel est le type de clé utilisée ? Quelle est la taille de la clé ? Quelle courbe est utilisée ? Quelle est la durée de validité ? Qu'est-ce qui vous permet de dire qu'il s'agit d'un certificat « racine » ou auto-signé ? Pour quels « X509v3 Key Usage » cette autorité de certification peut-elle être utilisée ?_
 
 **Type de clé :** une clé à **courbe elliptique** (`Public Key Algorithm: id-ecPublicKey`), et non une clé RSA comme dans la chaîne de l'université. Le certificat est d'ailleurs signé en **ECDSA** (`ecdsa-with-SHA256`) : le haché SHA-256 du certificat est signé avec l'algorithme de signature sur courbe elliptique.
 
-**Taille de la clé :** **256 bits** (`Public-Key: (256 bit)`). C'est beaucoup moins que les 4096 bits de la racine HARICA, pour un niveau de sécurité comparable : une clé EC de 256 bits offre une sécurité d'environ 128 bits, équivalente à une clé RSA de 3072 bits. La sécurité des courbes elliptiques repose sur le problème du logarithme discret sur une courbe, pour lequel on ne connaît pas d'algorithme aussi efficace que ceux qui factorisent les modules RSA. Les clés et les signatures sont donc bien plus courtes : la signature n'occupe ici que 70 octets, contre 384 octets pour la signature RSA de la question 16.
-
-La clé publique `pub` est un point de la courbe. Le premier octet, `04`, indique qu'il est donné sous forme non compressée, suivi de ses deux coordonnées x et y de 32 octets chacune (65 octets au total).
+**Taille de la clé :** **256 bits**, soit une sécurité d'environ 128 bits, équivalente à RSA 3072. Les clés et signatures EC sont bien plus courtes : 70 octets de signature ici, contre 384 pour la signature RSA de la question 16.
 
 **Courbe utilisée :** `prime256v1`, appelée **P-256** par le NIST (`NIST CURVE: P-256`) et `secp256r1` dans d'autres normes. C'est la courbe la plus utilisée en TLS.
 
-**Durée de validité :** du **12 novembre 2025** au **7 novembre 2045**, soit **20 ans** (7300 jours). Comme vu à la question 19, une racine a une durée de vie très longue, car la remplacer oblige à mettre à jour tous les clients qui lui font confiance.
+**Durée de validité :** du **12 novembre 2025** au **7 novembre 2045**, soit **20 ans**. Comme vu à la question 19, une racine a une durée de vie très longue, car la remplacer oblige à mettre à jour tous les clients qui lui font confiance.
 
 **Certificat racine auto-signé :** plusieurs éléments le montrent :
 
 - **Le sujet et l'émetteur sont identiques** (`C=FR, ST=Savoie, L=Chambéry, O=TP Sécurité, CN=Root Lorne`) : la CA a signé son propre certificat.
-- **Le _Subject Key Identifier_ et l'_Authority Key Identifier_ sont égaux** (`85:44:BC:D9:…:5F:80`) : la clé qui a signé le certificat est celle qu'il contient. Contrairement à la racine HARICA de la question 19, l'AKI est présent ici. La section `[ v3_ca ]` du fichier de configuration l'ajoute systématiquement (`authorityKeyIdentifier = keyid:always,issuer`).
+- **Le _Subject Key Identifier_ et l'_Authority Key Identifier_ sont égaux** (`85:44:BC:D9:…:5F:80`) : la clé qui a signé le certificat est celle qu'il contient.
 - **`Basic Constraints` vaut `CA:TRUE` sans `pathlen`** : c'est une autorité de certification, sans limite sur le nombre de niveaux en dessous d'elle.
 
 **_Key Usage_ autorisés :** `Digital Signature, Certificate Sign, CRL Sign`. La CA peut donc :
@@ -1238,7 +1243,7 @@ priv:
     [masqué]
 ```
 
-Seul le début de la sortie a été affiché (`head -3`), et la valeur `priv` a été masquée : c'est un nombre de 256 bits qui permettrait de signer des certificats au nom de `Root Lorne`. On y lit que c'est bien une clé EC de 256 bits, comme annoncé par le certificat. La sortie complète contient aussi la partie publique `pub` et le nom de la courbe. Le fichier ne fait que 314 octets, contre plus de 1000 pour une clé RSA de 3072 bits, ce qui illustre à nouveau la compacité des courbes elliptiques.
+La valeur `priv` (256 bits) est masquée : elle permettrait de signer des certificats au nom de `Root Lorne`.
 
 #### Politique de signature
 
@@ -1274,19 +1279,13 @@ emailAddress = optional
 | `supplied` | Le champ doit être présent, avec une valeur quelconque   |
 | `optional` | Le champ peut être absent                                |
 
-Avec `policy_strict`, la racine n'accepte de signer que les demandes dont le pays (`C=FR`), la région (`ST=Savoie`) et l'organisation (`O=TP Sécurité`) sont **identiques aux siens**. C'est logique : les CA intermédiaires doivent appartenir à la même organisation que la racine. La ville (`L`) n'est pas contrôlée, ce qui explique que la racine s'appelle `Chambéry` alors que le sujet impose `Chambery` aux intermédiaires.
+Avec `policy_strict`, la racine n'accepte de signer que les demandes dont le pays (`C=FR`), la région (`ST=Savoie`) et l'organisation (`O=TP Sécurité`) sont identiques aux siens. C'est logique : les CA intermédiaires doivent appartenir à la même organisation que la racine. La ville (`L`) n'est pas contrôlée, ce qui explique que la racine s'appelle `Chambéry` alors que le sujet impose `Chambery` aux intermédiaires.
 
 La politique `policy_loose`, qui n'impose que le `commonName`, est destinée aux CA intermédiaires : elles doivent pouvoir signer les certificats de serveurs appartenant à d'autres organisations, comme « Canut palancac inc. » à Lyon.
 
 ### 6.3 Création d'une autorité de certification intermédiaire
 
-Cette partie met en place, sur la machine `tls-ca-palancac`, ma propre CA intermédiaire `RA palancac`. Elle servira ensuite à délivrer les certificats des serveurs. La mise en place se fait en trois étapes :
-
-1. création de la bi-clé de la CA ;
-2. création d'une demande de certificat (CSR) ;
-3. signature de cette demande par la CA racine `Root Lorne`.
-
-Comme pour la racine, la CA est gérée avec `openssl ca` et décrite par un fichier `openssl.cnf`. L'enseignant en fournit une version préconfigurée, que j'ai téléchargée dans le dossier `/home/etudiant/ca` :
+Nous mettons en place sur `tls-ca-palancac` notre CA intermédiaire `RA palancac` en trois étapes : bi-clé, demande de certificat (CSR), signature par `Root Lorne`. Nous avons d'abord téléchargé le `openssl.cnf` préconfiguré fourni par l'enseignant :
 
 ```console
 [etudiant@tls-ca-palancac ~]$ mkdir -p ~/ca && cd ~/ca
@@ -1302,19 +1301,19 @@ Comme pour la racine, la CA est gérée avec `openssl ca` et décrite par un fic
 
 Le fichier est presque identique à celui de la racine, avec trois différences importantes :
 
-| Paramètre                                      | Racine (`Root Lorne`) | Intermédiaire (`RA palancac`)       | Conséquence                                                                                                         |
-| ---------------------------------------------- | --------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `policy`                                       | `policy_strict`       | `policy_loose`                      | Ma CA pourra signer des certificats pour d'autres organisations (`Canut palancac inc.`), seul le CN est obligatoire |
-| `copy_extensions`                              | absent                | `copy`                              | Les extensions demandées dans la CSR (notamment le `subjectAltName`) sont recopiées dans le certificat              |
-| `authorityInfoAccess` (dans `[ server_cert ]`) | absent                | `OCSP;URI:http://ocsp2.example.com` | Les certificats de serveur indiqueront une adresse OCSP. C'est une valeur d'exemple : aucun serveur OCSP n'y répond |
+| Paramètre                                      | Racine (`Root Lorne`) | Intermédiaire (`RA palancac`)       | Conséquence                                                                                                            |
+| ---------------------------------------------- | --------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `policy`                                       | `policy_strict`       | `policy_loose`                      | Notre CA pourra signer des certificats pour d'autres organisations (`Canut palancac inc.`), seul le CN est obligatoire |
+| `copy_extensions`                              | absent                | `copy`                              | Les extensions demandées dans la CSR (notamment le `subjectAltName`) sont recopiées dans le certificat                 |
+| `authorityInfoAccess` (dans `[ server_cert ]`) | absent                | `OCSP;URI:http://ocsp2.example.com` | Les certificats de serveur indiqueront une adresse OCSP. C'est une valeur d'exemple : aucun serveur OCSP n'y répond    |
 
-`copy_extensions = copy` est pratique, mais demande de la prudence. Une extension déjà définie par la section utilisée pour la signature (par exemple `basicConstraints = CA:FALSE` dans `[ server_cert ]`) n'est pas remplacée par celle de la CSR. En revanche, toute extension demandée qui n'est pas définie dans cette section sera recopiée telle quelle. Il faut donc toujours relire une demande avant de la signer.
+Avec `copy_extensions = copy`, toute extension de la CSR qui n'est pas définie dans la section de signature est recopiée : il faut donc relire une demande avant de la signer.
 
 ### Question 21
 
 > _Quelle valeur avez-vous mise dans le paramètre `dir` de la section `CA_default` ? Dans quel dossier et sous quel nom la clé privée de la CA devra-t-elle être stockée ? Dans quel dossier et sous quel nom le certificat de la CA devra-t-il être stocké ?_
 
-Le fichier fourni pointait vers `/root/ca/intermediate`, un dossier qui n'existe pas sur ma machine. J'ai remplacé cette valeur par **`/home/etudiant/ca`**, le dossier imposé par le sujet :
+Le fichier fourni pointait vers `/root/ca/intermediate`, un dossier qui n'existe pas sur notre machine. Nous avons remplacé cette valeur par **`/home/etudiant/ca`**, le dossier imposé par le sujet :
 
 ```console
 [etudiant@tls-ca-palancac ca]$ sed -i 's|^dir = /root/ca/intermediate|dir = /home/etudiant/ca|' openssl.cnf
@@ -1327,7 +1326,7 @@ Les autres chemins étant construits à partir de `$dir` :
 - **la clé privée de la CA** doit être stockée dans le dossier **`/home/etudiant/ca/private/`**, sous le nom **`intermediate.key.pem`** (paramètre `private_key`) ;
 - **le certificat de la CA** doit être stocké dans le dossier **`/home/etudiant/ca/certs/`**, sous le nom **`intermediate.cert.pem`** (paramètre `certificate`).
 
-J'ai ensuite créé l'arborescence et les fichiers attendus par `openssl ca` :
+Nous avons ensuite créé l'arborescence et les fichiers attendus par `openssl ca` :
 
 ```console
 [etudiant@tls-ca-palancac ca]$ mkdir certs crl csr newcerts private
@@ -1350,13 +1349,13 @@ drwx------. 2 etudiant etudiant    6 Nov 16 10:17 private
 -rw-r--r--. 1 etudiant etudiant    5 Nov 16 10:17 serial
 ```
 
-C'est la même structure que celle de la racine étudiée en 6.2 : `index.txt` est la base de données (vide pour l'instant), `serial` et `crlnumber` contiennent les prochains numéros de certificat et de CRL (`1000` en hexadécimal), et `private/` n'est accessible qu'à son propriétaire (`drwx------`).
+C'est la même structure que celle de la racine (6.2), avec `private/` accessible à son seul propriétaire.
 
 ### Question 22
 
 > _Relever la commande saisie pour créer la clé._
 
-Le sujet laissait le choix entre une clé RSA de 3072 bits et une clé sur courbe elliptique. J'ai choisi une clé **EC sur la courbe P-256**, la même que celle de `Root Lorne` : elle offre une sécurité équivalente à RSA 3072 (voir la question 20) avec des clés et des signatures bien plus courtes.
+Le sujet laissait le choix entre une clé RSA de 3072 bits et une clé sur courbe elliptique. Nous avons choisi une clé **EC sur la courbe P-256**, la même que celle de `Root Lorne` : elle offre une sécurité équivalente à RSA 3072 (voir la question 20) avec des clés et des signatures bien plus courtes.
 
 ```console
 [etudiant@tls-ca-palancac ca]$ openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -aes128 -out private/intermediate.key.pem
@@ -1370,20 +1369,20 @@ total 4
 -----BEGIN ENCRYPTED PRIVATE KEY-----
 ```
 
-| Option                              | Rôle                                                                                     |
-| ----------------------------------- | ---------------------------------------------------------------------------------------- |
-| `genpkey -algorithm EC`             | Génère une bi-clé sur courbe elliptique                                                  |
-| `-pkeyopt ec_paramgen_curve:P-256`  | Choisit la courbe P-256 (`prime256v1`)                                                   |
-| `-aes128`                           | Chiffre la clé privée en AES 128 bits, avec une clé dérivée de la passphrase (mon login) |
-| `-out private/intermediate.key.pem` | Enregistre la clé à l'emplacement attendu par `openssl.cnf` (question 21)                |
+| Option                              | Rôle                                                                                       |
+| ----------------------------------- | ------------------------------------------------------------------------------------------ |
+| `genpkey -algorithm EC`             | Génère une bi-clé sur courbe elliptique                                                    |
+| `-pkeyopt ec_paramgen_curve:P-256`  | Choisit la courbe P-256 (`prime256v1`)                                                     |
+| `-aes128`                           | Chiffre la clé privée en AES 128 bits, avec une clé dérivée de la passphrase (notre login) |
+| `-out private/intermediate.key.pem` | Enregistre la clé à l'emplacement attendu par `openssl.cnf` (question 21)                  |
 
-La passphrase est saisie de façon interactive, pour ne pas apparaître dans l'historique du shell. L'en-tête `ENCRYPTED PRIVATE KEY` confirme que la clé est chiffrée. Le `chmod 400` la rend lisible uniquement par son propriétaire, et en lecture seule. Le fichier ne fait que 412 octets.
+L'en-tête `ENCRYPTED PRIVATE KEY` confirme que la clé est chiffrée, et le `chmod 400` la rend lisible par son seul propriétaire.
 
 ### Question 23
 
 > _On constate que la demande de certificat contient déjà une signature. Pourquoi la présence de cette signature peut-elle être qualifiée d'incongrue ? Rechercher l'intérêt de cette signature._
 
-J'ai généré la demande de certificat avec la commande du sujet. La passphrase est demandée, car la CSR est signée avec la clé privée de la CA intermédiaire :
+Nous avons généré la demande de certificat avec la commande du sujet. La passphrase est demandée, car la CSR est signée avec la clé privée de la CA intermédiaire :
 
 ```console
 [etudiant@tls-ca-palancac ca]$ openssl req -config openssl.cnf -new -sha256 -key private/intermediate.key.pem \
@@ -1416,7 +1415,7 @@ Certificate Request:
         7b:87:a2:a2:6d:34:cd:47:6c:7b:2b:e7:6e:4f:27:e9
 ```
 
-La demande correspond à celle attendue : le sujet est `C=FR, ST=Savoie, L=Chambery, O=TP Sécurité, CN=RA palancac`, et elle contient ma clé publique EC P-256. Une CSR (format **PKCS#10**) ne contient que trois éléments : le sujet demandé, la clé publique, et d'éventuelles extensions (aucune ici). Les extensions de CA (`CA:TRUE`, `pathlen:0`…) seront ajoutées par la racine au moment de la signature, avec la section `[ v3_intermediate_ca ]`.
+Une CSR (PKCS#10) contient le sujet demandé, la clé publique et d'éventuelles extensions (aucune ici) : les extensions de CA seront ajoutées par la racine à la signature (`[ v3_intermediate_ca ]`).
 
 **Problème d'encodage du champ O.** Le « é » de `TP Sécurité` s'affiche `Ã©`, exactement comme dans le certificat de `Root Lorne`. L'analyse de la structure ASN.1 en donne la raison :
 
@@ -1426,14 +1425,14 @@ La demande correspond à celle attendue : le sujet est `C=FR, ST=Savoie, L=Chamb
    70:d=5  hl=2 l=  17 prim: UTF8STRING        :TP SÃ©curitÃ©
 ```
 
-Le champ est une `UTF8STRING` de **17 octets**, alors que « TP Sécurité » correctement encodé en UTF-8 n'en fait que 13. Sans l'option `-utf8`, `openssl req` considère que chaque octet saisi est un caractère distinct. Les deux octets UTF-8 de « é » (`C3 A9`) deviennent alors deux caractères, « Ã » et « © », réencodés chacun sur deux octets, soit 4 octets par « é ». Ce n'est pas gênant ici, et c'est même nécessaire : la politique `policy_strict` de la racine exige un champ `organizationName` **identique octet pour octet** au sien, et le certificat de `Root Lorne` a été créé de la même façon. Ajouter `-utf8` produirait un « é » correct, mais la racine refuserait alors de signer la demande.
+Le champ fait **17 octets** au lieu de 13 : sans `-utf8`, `openssl req` traite chaque octet de « é » (`C3 A9`) comme un caractère et le réencode. C'est en fait nécessaire : `policy_strict` exige un `organizationName` identique octet pour octet à celui de `Root Lorne`, créé de la même façon.
 
 **Pourquoi cette signature est incongrue :** une demande de certificat sert justement à obtenir une signature, celle de l'autorité de certification. Or elle est déjà signée, **par le demandeur lui-même**, avec sa propre clé privée : c'est une signature « auto-signée », que personne n'a de raison de croire, puisque personne ne garantit encore que cette clé appartient à `RA palancac`. De plus, cette signature disparaît : le certificat final ne contiendra que la signature de la racine.
 
 **L'intérêt de cette signature** est double :
 
-- **Prouver la possession de la clé privée** (_proof of possession_). En vérifiant la signature avec la clé publique contenue dans la CSR, la CA s'assure que le demandeur détient bien la clé privée correspondante. Sans cette preuve, n'importe qui pourrait récupérer la clé publique de quelqu'un d'autre (par exemple celle d'un serveur, qui est publique) et obtenir un certificat associant cette clé à sa propre identité.
-- **Garantir l'intégrité de la demande.** Si le sujet ou la clé publique étaient modifiés pendant le transfert de la CSR vers la CA (ici par copier-coller), la signature ne serait plus valide.
+- **Prouver la possession de la clé privée :** En vérifiant la signature avec la clé publique contenue dans la CSR, la CA s'assure que le demandeur détient bien la clé privée correspondante. Sans cette preuve, n'importe qui pourrait récupérer la clé publique de quelqu'un d'autre (par exemple celle d'un serveur, qui est publique) et obtenir un certificat associant cette clé à sa propre identité.
+- **Garantir l'intégrité de la demande :** Si le sujet ou la clé publique étaient modifiés pendant le transfert de la CSR vers la CA (ici par copier-coller), la signature ne serait plus valide.
 
 OpenSSL permet de vérifier cette signature, comme le fera la racine avant de signer :
 
@@ -1444,7 +1443,7 @@ Certificate request self-signature verify OK
 
 #### Signature de la demande par la CA racine
 
-Il faut maintenant demander à `Root Lorne` de transformer cette demande en certificat. Pour cela, la CSR doit être déposée sur la machine de la racine. Comme le demande le sujet, je l'ai affichée au format texte sur `tls-ca-palancac`, puis copiée-collée dans un nouveau fichier `ca/csr/palancac.csr.pem` sur `root-ca-tp` :
+Comme le demande le sujet, nous avons affiché la CSR sur `tls-ca-palancac`, puis nous l'avons copiée-collée dans `ca/csr/palancac.csr.pem` sur `root-ca-tp` :
 
 ```console
 [etudiant@tls-ca-palancac ca]$ cat csr/intermediate.csr.pem
@@ -1459,42 +1458,7 @@ zsa5eu/lKJerp8bM4mIFAiBMT+TEEBO0Tys7gXIwnPsUe4eiom00zUdseyvnbk8n
 -----END CERTIFICATE REQUEST-----
 ```
 
-Une CSR ne contient que des informations publiques (le sujet et la clé publique) : elle peut être transmise et affichée sans risque.
-
-**Un premier essai a échoué.** Après le collage dans `nano`, `openssl ca` refusait de lire la demande :
-
-```console
-[camanager@root-ca-tp ca]$ openssl ca -config openssl.cnf -extensions v3_intermediate_ca \
-  -days 3650 -notext -md sha256 -in csr/palancac.csr.pem \
-  -out certs/palancac.cert.pem
-Using configuration from openssl.cnf
-Enter pass phrase for /home/camanager/ca/private/ca.key.pem:
-80E29D8ADD7F0000:error:068000A8:asn1 encoding routines:asn1_check_tlen:wrong tag:crypto/asn1/tasn_dec.c:1186:
-80E29D8ADD7F0000:error:0688010A:asn1 encoding routines:asn1_item_embed_d2i:nested asn1 error:crypto/asn1/tasn_dec.c:349:Type=X509_REQ
-error: unable to load certificate request from file 'csr/palancac.csr.pem'
-```
-
-L'affichage du fichier avec `cat -A`, qui marque chaque fin de ligne par `$`, a permis de trouver la cause :
-
-```console
-[camanager@root-ca-tp ca]$ cat -A csr/palancac.csr.pem
------BEGIN CERTIFICATE REQUEST-----$
-[...]
-zsa5eu/lKJerp8bM4mIFAiBMT+TEEBO0Tys7gXIwnPsUe4eiom00zUdseyvnbk8n$
-6Q=$
------END CERTIFICATE REQUEST-----$
-```
-
-La dernière ligne de Base64 contenait `6Q=` au lieu de `6Q==` : un caractère `=` avait été perdu pendant le collage. Ces `=` finaux sont des caractères de remplissage, qui indiquent au décodeur combien d'octets utiles contient le dernier bloc Base64. Avec un seul `=`, le dernier octet décodé est faux, la structure ASN.1 ne correspond plus à une demande de certificat (`wrong tag`, `Type=X509_REQ`), et le fichier devient illisible. J'ai rétabli le caractère manquant, puis vérifié la demande avant de la signer :
-
-```bash
-sed -i 's/^6Q=$/6Q==/' csr/palancac.csr.pem
-openssl req -in csr/palancac.csr.pem -noout -verify -subject
-```
-
-Cet incident montre les limites du copier-coller pour transférer des fichiers. Il montre aussi l'utilité de la signature de la CSR vue à la question 23 : si un caractère avait été modifié au lieu d'être supprimé, le fichier serait resté lisible, mais la vérification de la signature aurait échoué et la racine aurait refusé la demande.
-
-Une fois le fichier corrigé, la racine a signé la demande avec les extensions `v3_intermediate_ca`, pour une durée de 10 ans (`-days 3650`) :
+La racine a signé la demande avec les extensions `v3_intermediate_ca`, pour 10 ans (`-days 3650`) :
 
 ```console
 [camanager@root-ca-tp ca]$ openssl ca -config openssl.cnf -extensions v3_intermediate_ca \
@@ -1591,7 +1555,7 @@ On retrouve la même structure qu'avec `GEANT TLS RSA 1` à la question 17 : une
 
 #### Installation du certificat sur la CA intermédiaire
 
-Le certificat a ensuite été copié-collé sur `tls-ca-palancac`, à l'emplacement défini par le paramètre `certificate` de `openssl.cnf` (question 21). Pour éviter de perdre à nouveau un caractère, j'ai collé le texte dans un _heredoc_ plutôt que dans `nano` : `cat` écrit le texte tel quel, sans le retoucher.
+Nous avons copié-collé le certificat sur `tls-ca-palancac`, à l'emplacement défini par le paramètre `certificate` (question 21) :
 
 ```console
 [etudiant@tls-ca-palancac ca]$ cat > certs/intermediate.cert.pem <<'EOF'
@@ -1611,12 +1575,1048 @@ Enter pass phrase for private/intermediate.key.pem:
 clé OK
 ```
 
-La dernière commande extrait la clé publique de deux façons, depuis le certificat et depuis la clé privée, puis les compare avec `diff`. Elles sont identiques : le certificat signé par `Root Lorne` correspond bien à la clé privée de ma CA. Celle-ci dispose maintenant de tout ce qu'il lui faut (clé privée, certificat, base de données et configuration) pour délivrer des certificats à des serveurs.
+La dernière commande compare la clé publique du certificat à celle de la clé privée : le certificat correspond bien à la clé de notre CA.
+
+### 6.4 Création du certificat du serveur
+
+La machine `tls-serv-palancac` hébergera le serveur web. Son certificat sera signé par notre CA intermédiaire `RA palancac`. Le sujet fixe les caractéristiques suivantes :
+
+| Élément                  | Valeur                                      |
+| ------------------------ | ------------------------------------------- |
+| Organisation             | `Canut palancac inc.`                       |
+| Localisation             | Lyon (`L=Lyon`), dans le Rhône (`ST=Rhone`) |
+| Nom principal du serveur | `www.palancac.fr`                           |
+| Noms alternatifs (SAN)   | `www.palancac.fr` et `dev.palancac.fr`      |
+
+La clé privée du serveur n'est pas chiffrée, sinon il faudrait saisir la passphrase à chaque démarrage du serveur web. Elle n'est protégée que par les droits du fichier.
+
+### Question 24
+
+> _Sur quelle machine est-il pertinent de générer la clé de chiffrement asymétrique qui sera utilisée par le serveur ?_
+
+Il faut générer la clé **sur la machine qui l'utilisera, le serveur `tls-serv-palancac`**, et non sur la machine de la CA.
+
+Une clé privée ne doit jamais quitter la machine sur laquelle elle sert. Si elle était générée sur la CA, il faudrait la transférer jusqu'au serveur (par copier-coller, `scp`…), et elle pourrait être interceptée pendant ce transfert ou laisser une copie sur la CA. En la générant directement sur le serveur :
+
+- **seule la CSR circule entre les deux machines.** Elle ne contient que des informations publiques (le sujet et la clé publique), et sa signature protège son intégrité (question 23) ;
+- **la CA ne connaît jamais la clé privée du serveur.** Elle n'a pas besoin de la connaître pour signer le certificat. Si la CA était compromise, les clés privées des serveurs ne le seraient pas pour autant, et seul le serveur peut prouver qu'il est bien `www.palancac.fr`.
+
+C'est le même principe que pour la CA intermédiaire en 6.3 : sa clé a été générée sur `tls-ca-palancac`, et seule sa CSR a été envoyée à `Root Lorne`.
+
+#### Génération de la clé et de la demande de certificat (sur `tls-serv-palancac`)
+
+Nous avons généré une bi-clé RSA de 2048 bits, non chiffrée, dans le dossier standard des clés privées du système, puis la demande de certificat :
+
+```bash
+sudo openssl genrsa -out /etc/pki/tls/private/serveur_http.pem 2048
+sudo openssl req -new -key /etc/pki/tls/private/serveur_http.pem -out serveur_http.csr.pem \
+  -subj "/C=FR/ST=Rhone/L=Lyon/O=Canut palancac inc./CN=www.palancac.fr" \
+  -addext "subjectAltName = DNS:www.palancac.fr, DNS:dev.palancac.fr"
+```
+
+`-addext` ajoute à la demande le `subjectAltName` avec les deux noms du serveur. `sudo` est nécessaire, car `/etc/pki/tls/private/` n'est accessible qu'à `root`.
+
+Nous avons copié-collé la demande sur la CA, dans `/home/etudiant/ca/csr/`, puis nous l'avons vérifiée :
+
+```console
+[etudiant@tls-ca-palancac ca]$ cat > csr/serveur_http.csr.pem <<'EOF'
+-----BEGIN CERTIFICATE REQUEST-----
+MIIC5zCCAc8CAQAwZDELMAkGA1UEBhMCRlIxDjAMBgNVBAgMBVJob25lMQ0wCwYD
+[...]
+eFwT1GACFwnIea8hEKAmmfP8qjqSegpr3qG7
+-----END CERTIFICATE REQUEST-----
+EOF
+[etudiant@tls-ca-palancac ca]$ openssl req -in csr/serveur_http.csr.pem -noout -verify -subject
+Certificate request self-signature verify OK
+subject=C=FR, ST=Rhone, L=Lyon, O=Canut palancac inc., CN=www.palancac.fr
+```
+
+#### Signature par la CA intermédiaire
+
+Notre CA a signé la demande avec les extensions `server_cert`, pour une durée de 375 jours :
+
+```console
+[etudiant@tls-ca-palancac ca]$ openssl ca -config openssl.cnf -extensions server_cert \
+  -days 375 -notext -md sha256 -in csr/serveur_http.csr.pem \
+  -out certs/serveur_http.cert.pem
+Using configuration from openssl.cnf
+Enter pass phrase for /home/etudiant/ca/private/intermediate.key.pem:
+Check that the request matches the signature
+Signature ok
+Certificate Details:
+        Serial Number: 4096 (0x1000)
+        Validity
+            Not Before: Nov 16 09:34:08 2026 GMT
+            Not After : Nov 26 09:34:08 2027 GMT
+        Subject:
+            countryName               = FR
+            stateOrProvinceName       = Rhone
+            localityName              = Lyon
+            organizationName          = Canut palancac inc.
+            commonName                = www.palancac.fr
+        X509v3 extensions:
+            [...]
+Certificate is to be certified until Nov 26 09:34:08 2027 GMT (375 days)
+Sign the certificate? [y/n]:y
+
+
+1 out of 1 certificate requests certified, commit? [y/n]y
+Write out database with 1 new entries
+Database updated
+```
+
+Cette fois, la passphrase demandée est celle de **ma** CA intermédiaire (`intermediate.key.pem`), et non celle de `Root Lorne`. C'est le premier certificat délivré par `RA palancac`, d'où le numéro de série `0x1000`, valeur initiale du fichier `serial` créé à la question 21.
+
+Deux différences avec la signature de notre CA par la racine :
+
+- **La politique `policy_loose` a accepté une organisation différente** (`Canut palancac inc.` au lieu de `TP Sécurité`), et a **conservé** le champ `L=Lyon`, car `localityName` y est déclaré `optional`. Avec `policy_strict`, la demande aurait été refusée.
+- **Le SAN de la demande a été recopié dans le certificat**, grâce au paramètre `copy_extensions = copy` vu en 6.3.
+
+#### Vérification du certificat du serveur
+
+```console
+[etudiant@tls-ca-palancac ca]$ openssl x509 -in certs/serveur_http.cert.pem -noout -text
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 4096 (0x1000)
+        Signature Algorithm: ecdsa-with-SHA256
+        Issuer: C=FR, ST=Savoie, O=TP SÃ©curitÃ©, CN=RA palancac
+        Validity
+            Not Before: Nov 16 09:34:08 2026 GMT
+            Not After : Nov 26 09:34:08 2027 GMT
+        Subject: C=FR, ST=Rhone, L=Lyon, O=Canut palancac inc., CN=www.palancac.fr
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (2048 bit)
+                Modulus:
+                    00:de:b2:cf:05:c4:f3:93:8c:9d:d6:07:55:42:5d:
+                    [...]
+                    61:27
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Basic Constraints:
+                CA:FALSE
+            Netscape Cert Type:
+                SSL Server
+            Netscape Comment:
+                OpenSSL Generated Server Certificate
+            X509v3 Subject Key Identifier:
+                9D:3E:D5:3B:85:76:40:6D:89:0B:27:52:97:24:66:00:B4:9E:93:FE
+            X509v3 Authority Key Identifier:
+                keyid:EA:22:EA:80:2F:10:18:6B:41:BE:F3:5A:2F:70:CB:47:2C:A6:35:96
+                DirName:/C=FR/ST=Savoie/L=Chamb\xC3\x83\xC2\xA9ry/O=TP S\xC3\x83\xC2\xA9curit\xC3\x83\xC2\xA9/CN=Root Lorne
+                serial:10:21
+            X509v3 Key Usage: critical
+                Digital Signature, Non Repudiation, Key Encipherment
+            X509v3 Extended Key Usage:
+                TLS Web Server Authentication
+            Authority Information Access:
+                OCSP - URI:http://ocsp2.example.com
+            X509v3 Subject Alternative Name:
+                DNS:www.palancac.fr, DNS:dev.palancac.fr
+    Signature Algorithm: ecdsa-with-SHA256
+    Signature Value:
+        30:45:02:20:71:3e:0a:d0:e7:9b:6d:d9:42:66:d6:1a:9b:23:
+        [...]
+```
+
+Le certificat correspond à celui attendu :
+
+| Élément                    | Valeur                                                              | Commentaire                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Émetteur                   | `CN=RA palancac`                                                    | Signé par notre CA intermédiaire                                                                                 |
+| Sujet                      | `C=FR, ST=Rhone, L=Lyon, O=Canut palancac inc., CN=www.palancac.fr` | Conforme à la demande                                                                                            |
+| Clé publique               | RSA 2048 bits                                                       | La clé générée sur le serveur                                                                                    |
+| Signature                  | `ecdsa-with-SHA256`                                                 | Faite avec la clé EC de notre CA : la clé signée (RSA) et la clé qui signe (EC) peuvent être de types différents |
+| Validité                   | du 16 novembre 2026 au 26 novembre 2027                             | 375 jours                                                                                                        |
+| `Basic Constraints`        | `CA:FALSE`                                                          | Ce certificat ne peut pas signer d'autres certificats                                                            |
+| `Extended Key Usage`       | `TLS Web Server Authentication`                                     | Utilisable uniquement pour authentifier un serveur TLS                                                           |
+| `Subject Alternative Name` | `DNS:www.palancac.fr, DNS:dev.palancac.fr`                          | Recopié depuis la CSR                                                                                            |
+
+Quelques extensions à commenter :
+
+- **`Authority Key Identifier`** contient l'identifiant de clé de notre CA (`EA:22:EA:80:…`), mais aussi l'émetteur et le numéro de série de son certificat (`CN=Root Lorne`, `serial:10:21`), car `[ server_cert ]` demande `keyid,issuer:always`.
+- **`Authority Information Access`** pointe vers `http://ocsp2.example.com`, une adresse d'exemple où aucun serveur OCSP ne répond.
+- **`Netscape Cert Type` / `Netscape Comment`** sont des extensions obsolètes, ignorées par les clients actuels.
+
+La durée de 375 jours dépasse la limite de 200 jours des CA publiques (question 15), qui ne s'applique pas à une PKI privée.
+
+#### Installation du certificat sur le serveur
+
+Nous avons copié-collé le certificat sur `tls-serv-palancac`, dans `/etc/pki/tls/certs/`. Ce dossier appartenant à `root`, nous utilisons `sudo tee` (une redirection `>` s'exécuterait sans les droits de `root`) :
+
+```console
+[etudiant@tls-serv-palancac ~]$ sudo tee /etc/pki/tls/certs/serveur_http.cert.pem > /dev/null <<'EOF'
+-----BEGIN CERTIFICATE-----
+MIIEAjCCA6igAwIBAgICEAAwCgYIKoZIzj0EAwIwUDELMAkGA1UEBhMCRlIxDzAN
+[...]
+-----END CERTIFICATE-----
+EOF
+[etudiant@tls-serv-palancac ~]$ openssl x509 -in /etc/pki/tls/certs/serveur_http.cert.pem -noout -subject -issuer -ext subjectAltName
+subject=C=FR, ST=Rhone, L=Lyon, O=Canut palancac inc., CN=www.palancac.fr
+issuer=C=FR, ST=Savoie, O=TP SÃ©curitÃ©, CN=RA palancac
+X509v3 Subject Alternative Name:
+    DNS:www.palancac.fr, DNS:dev.palancac.fr
+[etudiant@tls-serv-palancac ~]$ sudo ls -l /etc/pki/tls/private/serveur_http.pem /etc/pki/tls/certs/serveur_http.cert.pem
+-rw-r--r--. 1 root root 1452 Nov 16 10:36 /etc/pki/tls/certs/serveur_http.cert.pem
+-rw-------. 1 root root 1704 Nov 16 10:32 /etc/pki/tls/private/serveur_http.pem
+```
+
+Le certificat est lisible par tous (`644`), la clé privée par `root` seul (`600`). Nous vérifions ensuite que le certificat correspond à la clé privée :
+
+```console
+[etudiant@tls-serv-palancac ~]$ openssl x509 -in /etc/pki/tls/certs/serveur_http.cert.pem -noout -pubkey | sha256sum
+4e48dffed73e9aa953cd39b6a66ad15b33675b4035e477db6261e53a48608918  -
+[etudiant@tls-serv-palancac ~]$ sudo openssl pkey -in /etc/pki/tls/private/serveur_http.pem -pubout | sha256sum
+4e48dffed73e9aa953cd39b6a66ad15b33675b4035e477db6261e53a48608918  -
+```
+
+Les empreintes sont identiques. La chaîne de confiance est complète :
+
+```text
+Root Lorne          (EC P-256, auto-signé, valable jusqu'en 2045)
+   └── RA palancac      (EC P-256, n° 0x1021, CA:TRUE pathlen:0, valable jusqu'en 2036)
+          └── www.palancac.fr  (RSA 2048, n° 0x1000, CA:FALSE serverAuth, valable jusqu'en 2027)
+```
 
 ## 7. Mise en place d'un reverse proxy
 
+Le certificat et sa clé sont utilisés par un **reverse proxy HTTPS** (Nginx), qui transmet les requêtes à deux serveurs web internes (_backends_). Les trois services tournent dans des conteneurs Docker décrits par un fichier Docker Compose :
+
+```text
+                        HTTPS (certificat www.palancac.fr)
+   Client  ─────────────────────────────►  reverse proxy (Nginx)
+                                              │            │
+                                     /        │            │  /admin/
+                                              ▼            ▼
+                                        web1 (Apache)   web2 (Apache)
+```
+
+Seul le proxy est exposé : il établit la connexion TLS et détient la clé privée (**terminaison TLS**), les backends n'ont pas de certificat.
+
+### 7.1 Installation de Docker et Git
+
+Docker n'étant pas fourni par les dépôts d'Alma Linux, nous avons ajouté le dépôt officiel de Docker, puis installé le moteur Docker et ses outils sur `tls-serv-palancac` :
+
+```console
+[etudiant@tls-serv-palancac ~]$ sudo dnf config-manager --add-repo=https://download.docker.com/linux/centos/docker-ce.repo
+Adding repo from: https://download.docker.com/linux/centos/docker-ce.repo
+[etudiant@tls-serv-palancac ~]$ sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+[...]
+Installing:
+ containerd.io                 x86_64   2.4.2-4.el10          docker-ce-stable   35 M
+ docker-ce                     x86_64   3:29.9.3-1.el10       docker-ce-stable   26 M
+ docker-ce-cli                 x86_64   1:29.9.3-1.el10       docker-ce-stable  8.9 M
+ docker-compose-plugin         x86_64   5.7.1-1.el10          docker-ce-stable  8.8 M
+[...]
+Importing GPG key 0x621E9F35:
+ Userid     : "Docker Release (CE rpm) <docker@docker.com>"
+ Fingerprint: 060A 61C5 1B55 8A7F 742B 77AA C52F EB6B 621E 9F35
+ From       : https://download.docker.com/linux/centos/gpg
+Key imported successfully
+[...]
+Complete!
+[etudiant@tls-serv-palancac ~]$ sudo systemctl start docker
+[etudiant@tls-serv-palancac ~]$ sudo systemctl enable docker
+Created symlink '/etc/systemd/system/multi-user.target.wants/docker.service' → '/usr/lib/systemd/system/docker.service'.
+```
+
+| Paquet                  | Rôle                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------- |
+| `docker-ce`             | Le démon Docker (_Community Edition_), qui gère les images et les conteneurs                |
+| `docker-ce-cli`         | La commande `docker`, qui envoie les ordres au démon                                        |
+| `containerd.io`         | L'environnement d'exécution qui lance réellement les conteneurs                             |
+| `docker-compose-plugin` | La commande `docker compose`, qui démarre plusieurs conteneurs décrits dans un fichier YAML |
+
+`systemctl enable` relance Docker à chaque démarrage de la machine. Test de l'installation :
+
+```console
+[etudiant@tls-serv-palancac ~]$ sudo docker run hello-world
+Unable to find image 'hello-world:latest' locally
+latest: Pulling from library/hello-world
+4f55086f7dd0: Pull complete
+d5e71e642bf5: Download complete
+Digest: sha256:cf1b20a0c89a666b6950fecda7ccbc1b1a86520e7c53f908f3a21e79d0d60458
+Status: Downloaded newer image for hello-world:latest
+
+Hello from Docker!
+This message shows that your installation appears to be working correctly.
+[...]
+```
+
+Docker a téléchargé l'image depuis Docker Hub et lancé le conteneur : l'installation fonctionne.
+
+Git a ensuite été installé avec `sudo dnf -y install git`, ainsi que `tree` pour afficher l'arborescence des fichiers.
+
+### 7.2 Mise en place des conteneurs pour l'infrastructure
+
+Avant de mettre en place HTTPS, on teste l'infrastructure en HTTP simple. L'enseignant fournit les fichiers nécessaires dans un dépôt Git :
+
+```console
+[etudiant@tls-serv-palancac ~]$ git clone https://github.com/lorne-univ/tls-reverse
+[etudiant@tls-serv-palancac ~]$ cd tls-reverse
+[etudiant@tls-serv-palancac tls-reverse]$ tree
+.
+├── README.md
+├── compose.yaml
+├── httpd-web1
+│   └── picture
+├── httpd-web2
+│   └── styles
+└── nginx-reverse
+    ├── conf
+    │   └── nginx.conf
+    └── ssl
+```
+
+Le dossier `nginx-reverse/ssl/` est vide : c'est là que seront placés le certificat et la clé du serveur à l'étape 7.3.
+
+#### Le fichier `compose.yaml`
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ cat compose.yaml
+services:
+  web1:
+    image: "httpd:2.4"
+    volumes:
+      - ./httpd-web1:/usr/local/apache2/htdocs/
+
+  web2:
+    image: "httpd:2.4"
+    volumes:
+      - ./httpd-web2:/usr/local/apache2/htdocs/
+
+  reverse:
+    image: "nginx:1.25"
+    volumes:
+      - ./nginx-reverse/conf/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx-reverse/ssl:/etc/nginx/ssl
+    ports:
+      - "443:443"
+      - "80:80"
+```
+
+Ce fichier décrit trois conteneurs (_services_) :
+
+| Service   | Image        | Volumes montés                                                                                   | Ports publiés |
+| --------- | ------------ | ------------------------------------------------------------------------------------------------ | ------------- |
+| `web1`    | `httpd:2.4`  | `./httpd-web1` à la place de `htdocs`, la racine du site Apache                                  | aucun         |
+| `web2`    | `httpd:2.4`  | `./httpd-web2` à la place de `htdocs`                                                            | aucun         |
+| `reverse` | `nginx:1.25` | `nginx.conf` à la place de la configuration de Nginx, et le dossier `ssl/` dans `/etc/nginx/ssl` | 80 et 443     |
+
+- **Les volumes** relient un dossier de la machine hôte à un dossier du conteneur. Les fichiers placés dans `httpd-web1/` sont donc directement servis par Apache dans le conteneur `web1`, sans avoir à reconstruire d'image. De même, `nginx.conf` peut être modifié sur l'hôte, puis pris en compte en redémarrant le conteneur.
+- **Seul `reverse` publie des ports** (`"80:80"` signifie : le port 80 de l'hôte est redirigé vers le port 80 du conteneur). `web1` et `web2` ne sont pas joignables depuis l'extérieur : on ne peut y accéder qu'en passant par le reverse proxy.
+- Compose crée un **réseau privé** (`tls-reverse_default`) commun aux trois conteneurs, avec un DNS interne : Nginx peut joindre les backends par leur nom de service, `web1` et `web2`.
+
+#### Le fichier `nginx.conf`
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ cat nginx-reverse/conf/nginx.conf
+events {}
+http {
+  server {
+      listen    80;
+      server_name    www.votre_login.fr;
+
+     # ssl_certificate /etc/nginx/ssl/serveur_http.cert.pem;
+     # ssl_certificate_key /etc/nginx/ssl/serveur_http.pem;
+
+      location / {
+
+          proxy_pass http://web1;
+      }
+
+      location /admin/ {
+
+          proxy_pass http://web2/;
+      }
+  }
+}
+```
+
+Le bloc `server` écoute sur le port 80, en HTTP. Les deux lignes `ssl_certificate`, encore commentées, serviront à l'étape 7.3. Le `server_name` n'a pas encore été adapté, ce qui n'a pas d'effet ici : comme il n'existe qu'un seul bloc `server`, Nginx l'utilise pour toutes les requêtes.
+
+Les deux blocs `location` répartissent les requêtes. Nginx choisit le préfixe **le plus long** qui correspond à l'URL : `/admin/...` va vers `web2`, et tout le reste vers `web1`. Les deux `proxy_pass` ne s'écrivent pas tout à fait de la même façon, et cette différence change l'URL transmise au backend :
+
+| Directive                  | Forme                    | URL transmise au backend                                                                               |
+| -------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `proxy_pass http://web1;`  | sans chemin après l'hôte | L'URL d'origine, **inchangée** : `/picture/` reste `/picture/`                                         |
+| `proxy_pass http://web2/;` | avec un `/` après l'hôte | Le préfixe de la `location` (`/admin/`) est **remplacé** par `/` : `/admin/styles/` devient `/styles/` |
+
+Grâce à ce remplacement, `web2` n'a pas besoin de savoir qu'il est publié sous `/admin/` : ses fichiers sont à la racine de son site.
+
+#### Création des pages et prévision des résultats
+
+Les dossiers des backends étant vides, nous avons créé une page d'accueil pour chaque serveur et une page dans chaque sous-dossier, avec les commandes du sujet :
+
+```bash
+echo "L'URL / et toutes les URL autres que /admin/ sont servies par <b>web1</b>." > httpd-web1/index.html
+echo "L'URL /admin/ et les sous URL de /admin/ sont servies par <b>web2<b>." > httpd-web2/index.html
+echo "Styles web2" > httpd-web2/styles/index.html
+echo "Picture web1" > httpd-web1/picture/index.html
+```
+
+La deuxième commande du sujet contient une coquille (`<b>` au lieu de `</b>` après « web2 »), sans incidence sur le proxy.
+
+À partir des deux fichiers de configuration, on peut prévoir ce qu'affichera chaque URL :
+
+| URL demandée                      | `location` choisie | Requête reçue par le backend | Résultat attendu                                        |
+| --------------------------------- | ------------------ | ---------------------------- | ------------------------------------------------------- |
+| `http://@IP_serveur`              | `/`                | `web1` : `/`                 | Page d'accueil de `web1`                                |
+| `http://@IP_serveur/admin/`       | `/admin/`          | `web2` : `/`                 | Page d'accueil de `web2`                                |
+| `http://@IP_serveur/picture/`     | `/`                | `web1` : `/picture/`         | « Picture web1 »                                        |
+| `http://@IP_serveur/admin/styles` | `/admin/`          | `web2` : `/styles`           | Redirection vers `/admin/styles/`, puis « Styles web2 » |
+
+Le dernier cas est particulier. `/styles`, sans `/` final, désigne un dossier : Apache répond par une redirection (code 301) vers `/styles/`. Il l'exprime avec son propre nom d'hôte, `http://web2/styles/`, une adresse que le client ne peut pas résoudre. Nginx corrige automatiquement l'en-tête `Location` des redirections grâce à sa directive `proxy_redirect`, active par défaut : il y remplace `http://web2/` par le préfixe public `/admin/`.
+
+#### Démarrage des conteneurs
+
+Nginx résout les noms des backends (`web1`, `web2`) au chargement de sa configuration. Nous avons donc ajouté au service `reverse` une directive `depends_on`, pour que Compose démarre `web1` et `web2` avant lui :
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ sed -i 's|^  reverse:|  reverse:\n    depends_on:\n      - web1\n      - web2|' compose.yaml
+[etudiant@tls-serv-palancac tls-reverse]$ sed -n '/reverse:/,$p' compose.yaml
+  reverse:
+    depends_on:
+      - web1
+      - web2
+    image: "nginx:1.25"
+    [...]
+[etudiant@tls-serv-palancac tls-reverse]$ sudo docker compose up -d
+[...]
+[etudiant@tls-serv-palancac tls-reverse]$ sudo docker compose ps
+NAME                    IMAGE        COMMAND                  SERVICE   CREATED         STATUS                  PORTS
+tls-reverse-reverse-1   nginx:1.25   "/docker-entrypoint.…"   reverse   2 minutes ago   Up Less than a second   0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp
+tls-reverse-web1-1      httpd:2.4    "httpd-foreground"       web1      2 minutes ago   Up 2 minutes            80/tcp
+tls-reverse-web2-1      httpd:2.4    "httpd-foreground"       web2      2 minutes ago   Up 2 minutes            80/tcp
+```
+
+L'option `-d` lance les conteneurs en arrière-plan. Seul `reverse` publie des ports sur l'hôte (80 et 443) : `web1` et `web2` ne sont joignables que dans le réseau Docker (`80/tcp`).
+
+#### Tests
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ curl http://localhost/
+L'URL / et toutes les URL autres que /admin/ sont servies par <b>web1</b>.
+[etudiant@tls-serv-palancac tls-reverse]$ curl http://localhost/admin/
+L'URL /admin/ et les sous URL de /admin/ sont servies par <b>web2<b>.
+[etudiant@tls-serv-palancac tls-reverse]$ curl http://localhost/picture/
+Picture web1
+[etudiant@tls-serv-palancac tls-reverse]$ curl -i http://localhost/admin/styles
+HTTP/1.1 301 Moved Permanently
+Server: nginx/1.25.5
+Date: Mon, 16 Nov 2026 10:36:35 GMT
+Content-Type: text/html; charset=iso-8859-1
+Content-Length: 267
+Location: http://localhost/admin/styles/
+Connection: keep-alive
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html><head>
+<title>301 Moved Permanently</title>
+</head><body>
+<h1>Moved Permanently</h1>
+<p>The document has moved <a href="http://web2/styles/">here</a>.</p>
+</body></html>
+[etudiant@tls-serv-palancac tls-reverse]$ curl -L http://localhost/admin/styles
+Styles web2
+```
+
+Les quatre résultats correspondent aux prévisions (`-i` affiche les en-têtes, `-L` suit la redirection). Dans la réponse 301, Nginx a réécrit l'en-tête `Location` en `http://localhost/admin/styles/`, mais pas le corps de la page, qui contient toujours `http://web2/styles/`. L'en-tête `Server: nginx/1.25.5` montre que le client ne voit que le proxy, et pas les serveurs Apache derrière lui.
+
+### 7.3 Mise en place de SSL
+
+#### 7.3.1 Configuration de Nginx
+
+Pour activer TLS, Nginx a besoin de deux fichiers : le certificat du serveur (directive `ssl_certificate`) et la clé privée correspondante (`ssl_certificate_key`). Le conteneur ne voit pas le dossier `/etc/pki/tls/` de l'hôte, seulement le volume `./nginx-reverse/ssl`, monté dans `/etc/nginx/ssl`. Nous y avons donc copié les deux fichiers créés à la section 6.4, sous les noms attendus par la configuration fournie :
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ sudo cp /etc/pki/tls/certs/serveur_http.cert.pem nginx-reverse/ssl/
+[etudiant@tls-serv-palancac tls-reverse]$ sudo cp /etc/pki/tls/private/serveur_http.pem nginx-reverse/ssl/
+[etudiant@tls-serv-palancac tls-reverse]$ sudo chmod 644 nginx-reverse/ssl/serveur_http.cert.pem
+[etudiant@tls-serv-palancac tls-reverse]$ ls -l nginx-reverse/ssl/
+total 8
+-rw-r--r--. 1 root root 1452 Nov 16 11:38 serveur_http.cert.pem
+-rw-------. 1 root root 1704 Nov 16 11:38 serveur_http.pem
+```
+
+La clé privée garde des droits `600` : le processus maître de Nginx, lancé en `root` dans le conteneur, peut la lire. Le dossier `ssl/` n'est pas versionné dans le dépôt du compte rendu.
+
+Nous avons ensuite modifié `nginx.conf`, après en avoir conservé une copie (`nginx.conf.orig`). Le bloc existant sur le port 80 est conservé, et un second bloc `server` est ajouté pour HTTPS :
+
+```nginx
+events {}
+http {
+  server {
+      listen    80;
+      server_name    www.palancac.fr dev.palancac.fr;
+
+      location / {
+          proxy_pass http://web1;
+      }
+
+      location /admin/ {
+          proxy_pass http://web2/;
+      }
+  }
+
+  server {
+      listen    443 ssl;
+      server_name    www.palancac.fr dev.palancac.fr;
+
+      ssl_certificate /etc/nginx/ssl/serveur_http.cert.pem;
+      ssl_certificate_key /etc/nginx/ssl/serveur_http.pem;
+      ssl_protocols TLSv1.2 TLSv1.3;
+
+      location / {
+          proxy_pass http://web1;
+      }
+
+      location /admin/ {
+          proxy_pass http://web2/;
+      }
+  }
+}
+```
+
+| Directive                                     | Rôle                                                                                                                                     |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `listen 443 ssl`                              | Écoute sur le port 443 (HTTPS) et établit une session TLS avant de traiter la requête HTTP                                               |
+| `server_name www.palancac.fr dev.palancac.fr` | Les noms du serveur, les mêmes que dans le SAN du certificat. `votre_login` a été remplacé par notre login                               |
+| `ssl_certificate`                             | Le certificat envoyé au client pendant la poignée de main TLS                                                                            |
+| `ssl_certificate_key`                         | La clé privée qui permet de prouver la possession du certificat (signature `CertificateVerify`, question 4)                              |
+| `ssl_protocols TLSv1.2 TLSv1.3`               | N'accepte que les versions récentes de TLS. Les versions SSLv3, TLS 1.0 et TLS 1.1, qui présentent des faiblesses connues, sont refusées |
+
+Les blocs `location` sont identiques dans les deux serveurs : le proxy chiffre la connexion avec le client, puis transmet la requête en HTTP aux backends, à l'intérieur du réseau Docker. C'est la terminaison TLS décrite en introduction de cette section.
+
+Avant de redémarrer Nginx, on peut vérifier la syntaxe de la nouvelle configuration dans le conteneur, puis le redémarrer avec les commandes du sujet :
+
+```bash
+sudo docker compose exec reverse nginx -t
+sudo docker ps
+sudo docker restart tls-reverse-reverse-1
+```
+
+#### Tests en HTTPS
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ curl https://192.168.170.119
+curl: (60) SSL certificate problem: unable to get local issuer certificate
+More details here: https://curl.se/docs/sslcerts.html
+
+curl failed to verify the legitimacy of the server and therefore could not
+establish a secure connection to it. To learn more about this situation and
+how to fix it, please visit the webpage mentioned above.
+```
+
+Ce refus est attendu : `curl` ne connaît pas `RA palancac` et ne peut remonter à aucune racine de confiance. L'option `-k` ignore la vérification et permet de tester le serveur :
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ curl -k https://192.168.170.119
+L'URL / et toutes les URL autres que /admin/ sont servies par <b>web1</b>.
+[etudiant@tls-serv-palancac tls-reverse]$ curl -k https://192.168.170.119/admin/
+L'URL /admin/ et les sous URL de /admin/ sont servies par <b>web2<b>.
+```
+
+Le mode verbeux (`-v`) de `curl` détaille la session TLS établie :
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ curl -kv https://192.168.170.119 2>&1 | grep -E "SSL connection|subject:|issuer:|expire date|SSL certificate verify"
+* SSL connection using TLSv1.3 / TLS_AES_256_GCM_SHA384 / x25519 / RSASSA-PSS
+*  subject: C=FR; ST=Rhone; L=Lyon; O=Canut palancac inc.; CN=www.palancac.fr
+*  expire date: Nov 26 09:34:08 2027 GMT
+*  issuer: C=FR; ST=Savoie; O=TP Sécurité; CN=RA palancac
+*  SSL certificate verify result: unable to get local issuer certificate (20), continuing anyway.
+```
+
+- **La session utilise TLS 1.3** avec la suite `TLS_AES_256_GCM_SHA384`, la même que celle du site de l'université (section 5.1). La clé de session est échangée avec `x25519` (Diffie-Hellman sur courbe elliptique), et le serveur prouve la possession de sa clé RSA par une signature `RSASSA-PSS`.
+- **Le certificat présenté** est bien celui de `www.palancac.fr`, émis par `RA palancac`, et valable jusqu'au 26 novembre 2027.
+- **L'erreur de vérification** est l'erreur OpenSSL n° 20, `unable to get local issuer certificate` : le client n'a trouvé localement aucun certificat correspondant à l'émetteur, `RA palancac`. Avec `-k`, `curl` continue malgré tout (`continuing anyway`).
+
+Le mode _insecure_ ne doit servir qu'au diagnostic. La connexion est bien chiffrée, mais le serveur n'est pas authentifié : un attaquant placé entre le client et le serveur pourrait présenter son propre certificat sans que `curl` le refuse.
+
+#### 7.3.2 Mise en place de la chaîne de confiance de certificat
+
+Pour que les clients acceptent le certificat sans l'option `-k`, ils doivent pouvoir le rattacher à un certificat auquel ils font confiance. Le sujet propose trois possibilités :
+
+1. faire confiance au **certificat du serveur** uniquement ;
+2. faire confiance au **certificat de la CA intermédiaire** (`RA palancac`) : les clients valideront alors tous les certificats qu'elle délivre ;
+3. faire confiance au **certificat de la CA racine** (`Root Lorne`).
+
+### Question 25
+
+> _Justifier que la 3ᵉ solution est la plus pertinente._
+
+Faire confiance à la CA racine est la solution la plus pertinente, pour plusieurs raisons :
+
+| Critère                            | 1. Certificat du serveur                          | 2. CA intermédiaire                            | 3. CA racine                                                        |
+| ---------------------------------- | ------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------- |
+| Certificats acceptés               | Un seul serveur                                   | Les serveurs d'une seule CA intermédiaire      | Tous les serveurs de toutes les CA intermédiaires de l'organisation |
+| Nombre d'imports sur chaque client | Un par serveur                                    | Un par CA intermédiaire (une par étudiant ici) | **Un seul**                                                         |
+| Durée avant de devoir recommencer  | 375 jours : à chaque renouvellement du certificat | 10 ans                                         | 20 ans (jusqu'en 2045)                                              |
+| Ajout d'un nouveau serveur         | Nouvel import sur tous les clients                | Aucun import s'il dépend de la même CA         | **Aucun import**                                                    |
+
+- **Elle préserve la souplesse de la hiérarchie.** La racine peut créer de nouvelles CA intermédiaires, ou en révoquer une, sans modifier les clients : c'est l'intérêt d'une PKI à plusieurs niveaux.
+- **C'est le modèle utilisé sur Internet.** Les navigateurs et les systèmes ne contiennent que des certificats racines (question 19). Les certificats intermédiaires et ceux des serveurs sont envoyés par le serveur pendant la poignée de main TLS.
+
+En contrepartie, la clé privée de la racine devient critique : dans une vraie PKI, elle est conservée hors ligne, ce qui n'est pas le cas dans ce TP.
+
+#### Constat de départ
+
+Avant toute modification, `curl` et `openssl s_client` refusent tous les deux le certificat :
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ curl https://127.0.0.1
+curl: (60) SSL certificate problem: unable to get local issuer certificate
+[...]
+[etudiant@tls-serv-palancac tls-reverse]$ openssl s_client -connect 127.0.0.1:443 </dev/null 2>&1 | head -12
+Connecting to 127.0.0.1
+Can't use SSL_get_servername
+depth=0 C=FR, ST=Rhone, L=Lyon, O=Canut palancac inc., CN=www.palancac.fr
+verify error:num=20:unable to get local issuer certificate
+verify return:1
+depth=0 C=FR, ST=Rhone, L=Lyon, O=Canut palancac inc., CN=www.palancac.fr
+verify error:num=21:unable to verify the first certificate
+verify return:1
+depth=0 C=FR, ST=Rhone, L=Lyon, O=Canut palancac inc., CN=www.palancac.fr
+verify return:1
+CONNECTED(00000003)
+---
+```
+
+`s_client` ne voit qu'un seul niveau (`depth=0`) : le serveur n'envoie que son propre certificat. L'erreur 20 indique que l'émetteur de ce certificat (`RA palancac`) est introuvable, et l'erreur 21 que la vérification n'a donc pas pu aller plus loin que le premier certificat. Comme on n'a pas utilisé l'option `-verify_return_error`, `s_client` affiche les erreurs mais poursuit la connexion (`verify return:1`).
+
+La ligne `Can't use SSL_get_servername` signifie que le client n'a pas envoyé de nom de serveur (extension SNI, question 4) : on s'est connecté avec une adresse IP, et non avec un nom.
+
+#### Ajout de Root Lorne au magasin de confiance
+
+Nous avons récupéré le certificat de `Root Lorne` par copier-coller depuis `root-ca-tp` (`cat ~/ca/certs/ca.cert.pem`), puis nous l'avons enregistré sur le serveur dans `root-ca-lorne.pem`. Son empreinte permet de vérifier qu'il n'a pas été altéré pendant la copie :
+
+```console
+[etudiant@tls-serv-palancac ~]$ cat > ~/root-ca-lorne.pem <<'EOF'
+-----BEGIN CERTIFICATE-----
+MIICLjCCAdWgAwIBAgIUAz8ufhUaU3qU9VmF/ktISciIsu4wCgYIKoZIzj0EAwIw
+[...]
+AiAFTnhaFIVdcWWTQs1NN9u74y43CCRznUMyAXil/c7rEA==
+-----END CERTIFICATE-----
+EOF
+[etudiant@tls-serv-palancac ~]$ openssl x509 -in ~/root-ca-lorne.pem -noout -subject -fingerprint -sha256
+subject=C=FR, ST=Savoie, L=ChambÃ©ry, O=TP SÃ©curitÃ©, CN=Root Lorne
+sha256 Fingerprint=00:20:04:F1:27:14:F7:53:B7:8B:B7:E3:FC:44:75:B4:8D:FC:BF:EB:12:00:80:C7:11:46:38:B6:D2:86:54:B7
+```
+
+Dans une situation réelle, cette empreinte devrait être comparée à celle communiquée par l'administrateur de la CA, par un autre canal. C'est la seule façon de s'assurer que le certificat racine installé est bien le bon, puisqu'un certificat auto-signé ne prouve rien par lui-même (question 19).
+
+La page de manuel de `update-ca-trust` explique comment ajouter une autorité de confiance sous Red Hat :
+
+```console
+[etudiant@tls-serv-palancac ~]$ man update-ca-trust | grep -n -A3 "source/anchors"
+56:       •   add it as a new file to directory /etc/pki/ca-trust/source/anchors/
+57-
+58-       •   run update-ca-trust extract
+[...]
+89:       In the anchors subdirectories /usr/share/pki/ca-trust-source/anchors/ or /etc/pki/ca-trust/source/anchors/ you may install one or multiple certificates in
+90-       either the DER file format or in the PEM (BEGIN/END CERTIFICATE) file format. Each certificate will be treated as trusted for all purposes.
+```
+
+Il faut donc copier le certificat dans le dossier des **ancres de confiance** (_trust anchors_), `/etc/pki/ca-trust/source/anchors/`, puis lancer `update-ca-trust extract`. Cette commande régénère les fichiers de `/etc/pki/ca-trust/extracted/`, dont le `tls-ca-bundle.pem` étudié à la question 18, utilisé par OpenSSL, `curl` et la plupart des applications du système :
+
+```console
+[etudiant@tls-serv-palancac ~]$ sudo cp ~/root-ca-lorne.pem /etc/pki/ca-trust/source/anchors/
+[etudiant@tls-serv-palancac ~]$ sudo update-ca-trust extract
+[etudiant@tls-serv-palancac ~]$ trust list | grep -B2 -A3 "Root Lorne"
+pkcs11:id=%85%44%BC%D9%48%94%58%B7%90%E3%B0%65%31%CC%2C%23%2C%8F%5F%80;type=cert
+    type: certificate
+    label: Root Lorne
+    trust: anchor
+    category: authority
+```
+
+La commande `trust list` liste les certificats connus du système. `Root Lorne` y figure désormais comme ancre de confiance (`trust: anchor`) et comme autorité (`category: authority`). L'identifiant `85:44:BC:D9:…` est le _Subject Key Identifier_ de `Root Lorne`, relevé à la question 20.
+
+#### Le certificat n'est toujours pas validé
+
+```console
+[etudiant@tls-serv-palancac ~]$ curl https://127.0.0.1
+curl: (60) SSL certificate problem: unable to get local issuer certificate
+[...]
+[etudiant@tls-serv-palancac ~]$ openssl s_client -connect 127.0.0.1:443 </dev/null 2>&1 | head -12
+[...]
+depth=0 C=FR, ST=Rhone, L=Lyon, O=Canut palancac inc., CN=www.palancac.fr
+verify error:num=20:unable to get local issuer certificate
+[...]
+depth=0 C=FR, ST=Rhone, L=Lyon, O=Canut palancac inc., CN=www.palancac.fr
+verify error:num=21:unable to verify the first certificate
+[...]
+```
+
+Le résultat est identique, et c'est normal : le certificat du serveur n'a pas été signé par `Root Lorne`, mais par `RA palancac`. Le client sait maintenant faire confiance à la racine, mais il lui manque le maillon intermédiaire pour relier les deux :
+
+```text
+Root Lorne        ← dans le magasin de confiance du client
+   └── RA palancac       ← inconnu du client : la chaîne est rompue
+          └── www.palancac.fr  ← envoyé par le serveur
+```
+
+C'est exactement la situation de la question 18 : le serveur de l'université envoyait le certificat de `GEANT TLS RSA 1` en plus du sien, pour que le client puisse reconstituer la chaîne.
+
+#### Envoi de la chaîne de certificats par le serveur
+
+La solution la plus simple est que le serveur fournisse au client le certificat de la CA intermédiaire en même temps que le sien. Nginx envoie tous les certificats contenus dans le fichier indiqué par `ssl_certificate` : il suffit donc de concaténer les deux certificats dans `serveur_http.cert.pem`.
+
+Nous avons d'abord récupéré le certificat de `RA palancac` sur le serveur, toujours par copier-coller, et vérifié qu'il est bien signé par `Root Lorne` :
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ cat > ~/intermediate.cert.pem <<'EOF'
+-----BEGIN CERTIFICATE-----
+MIICCzCCAbGgAwIBAgICECEwCgYIKoZIzj0EAwIwZTELMAkGA1UEBhMCRlIxDzAN
+[...]
+A20h1CAD8/ELcMoYdQIgTUuJSYmXsZb07oSgR6L1mOQcOiEpmPao/ujSWU+9mpo=
+-----END CERTIFICATE-----
+EOF
+[etudiant@tls-serv-palancac tls-reverse]$ openssl verify -CAfile ~/root-ca-lorne.pem ~/intermediate.cert.pem
+/home/etudiant/intermediate.cert.pem: OK
+```
+
+Nous avons ensuite concaténé les deux certificats, après avoir conservé une copie du certificat seul :
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ sudo cp nginx-reverse/ssl/serveur_http.cert.pem nginx-reverse/ssl/serveur_http.cert.pem.seul
+[etudiant@tls-serv-palancac tls-reverse]$ cat nginx-reverse/ssl/serveur_http.cert.pem.seul ~/intermediate.cert.pem | sudo tee nginx-reverse/ssl/serveur_http.cert.pem > /dev/null
+[etudiant@tls-serv-palancac tls-reverse]$ grep -c "BEGIN CERTIFICATE" nginx-reverse/ssl/serveur_http.cert.pem
+2
+[etudiant@tls-serv-palancac tls-reverse]$ sudo docker restart tls-reverse-reverse-1
+tls-reverse-reverse-1
+```
+
+**L'ordre des certificats est important** : le certificat du serveur doit venir en premier, suivi de celui de l'autorité qui l'a signé. Nginx associe la clé privée (`ssl_certificate_key`) au premier certificat du fichier, et refuse de démarrer si elle ne correspond pas. Le certificat racine n'a pas besoin d'être ajouté : le client doit déjà le posséder, et c'est justement lui qui fonde la confiance.
+
+La vérification réussit désormais :
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ openssl s_client -connect 127.0.0.1:443 </dev/null 2>&1 | head -12
+Connecting to 127.0.0.1
+Can't use SSL_get_servername
+depth=2 C=FR, ST=Savoie, L=ChambÃ©ry, O=TP SÃ©curitÃ©, CN=Root Lorne
+verify return:1
+depth=1 C=FR, ST=Savoie, O=TP SÃ©curitÃ©, CN=RA palancac
+verify return:1
+depth=0 C=FR, ST=Rhone, L=Lyon, O=Canut palancac inc., CN=www.palancac.fr
+verify return:1
+CONNECTED(00000003)
+---
+Certificate chain
+ 0 s:C=FR, ST=Rhone, L=Lyon, O=Canut palancac inc., CN=www.palancac.fr
+```
+
+La chaîne complète est maintenant reconstituée, sur trois niveaux, et chaque niveau est valide (`verify return:1`, sans erreur) :
+
+| Niveau    | Certificat        | Provenance                                                             |
+| --------- | ----------------- | ---------------------------------------------------------------------- |
+| `depth=0` | `www.palancac.fr` | Envoyé par le serveur (1ᵉʳ certificat du fichier)                      |
+| `depth=1` | `RA palancac`     | Envoyé par le serveur (2ᵉ certificat du fichier)                       |
+| `depth=2` | `Root Lorne`      | Trouvé dans le magasin de confiance local, ajouté à l'étape précédente |
+
+C'est la même structure que celle observée pour le site de l'université à la question 12.
+
+#### Vérification du nom du serveur
+
+`curl`, en revanche, refuse toujours la connexion, mais pour une autre raison :
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ curl https://127.0.0.1
+curl: (60) SSL: no alternative certificate subject name matches target ipv4 address '127.0.0.1'
+More details here: https://curl.se/docs/sslcerts.html
+[...]
+```
+
+La chaîne de confiance est désormais valide, mais le certificat a été délivré pour `www.palancac.fr` et `dev.palancac.fr`, et non pour l'adresse `127.0.0.1`. `curl` compare l'adresse qu'on lui a demandée aux noms du _Subject Alternative Name_, et ne trouve aucune correspondance. `openssl s_client` n'effectue pas cette vérification par défaut, d'où la différence entre les deux outils.
+
+Cette vérification est indispensable : sans elle, n'importe quel serveur possédant un certificat valide, émis par une CA de confiance pour **un autre nom**, pourrait se faire passer pour `www.palancac.fr`.
+
+Pour joindre le serveur par son nom, il faudrait un serveur DNS. Faute d'en avoir un, on utilise le fichier `/etc/hosts`, qui associe localement des noms à des adresses IP et qui est consulté avant le DNS.
+
+### Question 26
+
+> _Quelle modification (ligne modifiée ou ajoutée) avez-vous effectuée dans le fichier hosts ?_
+
+Nous avons **ajouté** à la fin du fichier `/etc/hosts` la ligne suivante :
+
+```text
+192.168.170.119 www.palancac.fr dev.palancac.fr
+```
+
+Elle associe les deux noms présents dans le certificat (`www.palancac.fr` et `dev.palancac.fr`) à l'adresse IP du serveur, `192.168.170.119`. Nous avons choisi l'adresse réelle du serveur plutôt que `127.0.0.1` : c'est la même ligne qu'il faudrait ajouter sur une autre machine de la salle, et les requêtes passent par l'interface réseau, comme pour un vrai client.
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ echo "192.168.170.119 www.palancac.fr dev.palancac.fr" | sudo tee -a /etc/hosts
+192.168.170.119 www.palancac.fr dev.palancac.fr
+[etudiant@tls-serv-palancac tls-reverse]$ cat /etc/hosts
+# Loopback entries; do not change.
+# For historical reasons, localhost precedes localhost.localdomain:
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+# See hosts(5) for proper format and other examples:
+# 192.168.1.10 foo.example.org foo
+# 192.168.1.13 bar.example.org bar
+192.168.170.119 www.palancac.fr dev.palancac.fr
+```
+
+L'option `-a` de `tee` ajoute la ligne à la fin du fichier au lieu de l'écraser. `sudo` est nécessaire, car `/etc/hosts` appartient à `root`.
+
+#### Tests finaux
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ curl https://www.palancac.fr
+L'URL / et toutes les URL autres que /admin/ sont servies par <b>web1</b>.
+[etudiant@tls-serv-palancac tls-reverse]$ curl https://www.palancac.fr/admin/
+L'URL /admin/ et les sous URL de /admin/ sont servies par <b>web2<b>.
+[etudiant@tls-serv-palancac tls-reverse]$ curl https://dev.palancac.fr/picture/
+Picture web1
+[etudiant@tls-serv-palancac tls-reverse]$ curl -L https://www.palancac.fr/admin/styles
+Styles web2
+```
+
+Toutes les URL testées en HTTP à la section 7.2 sont accessibles en HTTPS, **sans l'option `-k`**, avec les deux noms du certificat. Le détail de la connexion confirme que le serveur est entièrement authentifié :
+
+```console
+[etudiant@tls-serv-palancac tls-reverse]$ curl -v https://www.palancac.fr 2>&1 | grep -E "SSL connection|subject:|issuer:|subjectAltName|SSL certificate verify"
+* SSL connection using TLSv1.3 / TLS_AES_256_GCM_SHA384 / x25519 / RSASSA-PSS
+*  subject: C=FR; ST=Rhone; L=Lyon; O=Canut palancac inc.; CN=www.palancac.fr
+*  subjectAltName: host "www.palancac.fr" matched cert's "www.palancac.fr"
+*  issuer: C=FR; ST=Savoie; O=TP Sécurité; CN=RA palancac
+*  SSL certificate verify ok.
+```
+
+Les deux vérifications de l'authentification du serveur réussissent :
+
+- **la chaîne de confiance** est valide jusqu'à `Root Lorne` (`SSL certificate verify ok`) ;
+- **le nom demandé** figure dans le SAN du certificat (`host "www.palancac.fr" matched cert's "www.palancac.fr"`).
+
+Depuis une autre machine, le certificat est refusé tant que `Root Lorne` n'est pas dans son magasin de confiance. Je l'ai vérifié depuis mon poste, avec l'option `--resolve` de `curl` à la place du fichier `hosts` :
+
+```console
+$ curl --resolve www.palancac.fr:443:192.168.170.119 https://www.palancac.fr/
+curl: (60) SSL certificate problem: unable to get local issuer certificate
+More details here: https://curl.se/docs/sslcerts.html
+$ curl -k --resolve www.palancac.fr:443:192.168.170.119 https://www.palancac.fr/admin/
+L'URL /admin/ et les sous URL de /admin/ sont servies par <b>web2<b>.
+```
+
+Le site est accessible depuis le réseau, mais sans `-k` mon poste ne peut pas terminer la chaîne. Pour que tous les postes acceptent le site, il suffit d'y déployer `Root Lorne` (question 25).
+
 ## 8. Développement d'un client Web
+
+Nous avons écrit en Python un client HTTPS, [`client/client_tls.py`](client/client_tls.py), qui n'utilise que la bibliothèque standard (`socket`, `ssl`). Il lance chaque test, compare le résultat obtenu au résultat attendu et affiche le détail de la session TLS ou la raison du refus.
+
+Le client utilise `ssl.create_default_context()`, qui reproduit le comportement d'un vrai client :
+
+- il charge le magasin de confiance du système, qui contient `Root Lorne` depuis la section 7.3.2 ;
+- il vérifie la chaîne de certificats (`verify_mode = CERT_REQUIRED`) ;
+- il vérifie que le nom demandé figure dans le SAN (`check_hostname = True`). Ce nom est passé dans `server_hostname`, qui sert aussi d'extension SNI.
+
+Le client se connecte toujours à l'adresse IP du serveur, et le nom demandé est fourni séparément. Nous pouvons ainsi tester un nom absent du certificat sans toucher au fichier `hosts`.
+
+### Question 27
+
+> _Rédiger un scénario de tests (objectif du test, résultat attendu) pour valider que l'authentification du serveur est menée à bien complètement. Mettre en œuvre les tests et relever les résultats obtenus. Vérifier également que la communication est chiffrée entre le client et le serveur._
+
+#### Scénario de tests
+
+Chaque test vise une des vérifications de l'authentification décrites à la question 4 :
+
+| #  | Objectif du test                                            | Mise en place                                                                   | Résultat attendu                                   |
+| -- | ----------------------------------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------- |
+| T1 | Cas nominal : chaîne et nom valides                         | `www.palancac.fr:443` (Nginx)                                                   | Connexion acceptée, page reçue                     |
+| T2 | Refus d'une chaîne qui ne mène à aucune racine de confiance | Même serveur, client sans aucune CA de confiance                                | Refus : `unable to get local issuer certificate`   |
+| T3 | Refus d'une chaîne incomplète                               | `openssl s_server` sur le port 8443, qui n'envoie que le certificat du serveur  | Refus : `unable to get local issuer certificate`   |
+| T4 | Vérification du nom                                         | Nginx, avec le nom demandé `palancac.fr`, absent du SAN                         | Refus : `Hostname mismatch`                        |
+| T5 | Refus d'un imposteur avec un certificat auto-signé          | `s_server` sur le port 8444, certificat auto-signé `CN=www.palancac.fr`         | Refus : `self-signed certificate`                  |
+| T6 | Vérification de la période de validité                      | `s_server` sur le port 8445, certificat signé par `RA palancac` mais expiré     | Refus : `certificate has expired`                  |
+| T7 | Vérification de l'usage du certificat                       | `s_server` sur le port 8446, certificat signé par `RA palancac` avec `usr_cert` | Refus : `unsuitable certificate purpose`           |
+| T8 | Contre-exemple : un client qui ne vérifie rien              | Serveur de T5, client avec `CERT_NONE` et `check_hostname = False`              | Connexion acceptée : l'imposteur n'est pas détecté |
+| T9 | Chiffrement des échanges                                    | Capture `tcpdump` pendant T1                                                    | Contenu HTTP illisible sur le port 443             |
+
+Les tests T3 et T5 à T7 utilisent des serveurs temporaires lancés avec `openssl s_server`, sur d'autres ports, sans modifier le Nginx en place. Les certificats de T6 et T7 sont signés par notre CA `RA palancac`. Ils ne diffèrent du certificat valide que par le point testé : les dates pour T6, l'extension `usr_cert` (`extendedKeyUsage = clientAuth`) pour T7.
+
+#### Préparation des serveurs de test
+
+Sur `tls-serv-palancac`, nous avons généré une clé de test, deux demandes de certificat et le certificat auto-signé de l'imposteur. Le champ `OU` distingue les deux demandes du certificat déjà délivré : `openssl ca` refuse de signer deux certificats valides de même sujet.
+
+```bash
+mkdir -p ~/tests && cd ~/tests
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out test.key
+openssl req -new -key test.key -out expire.csr.pem \
+  -subj "/C=FR/ST=Rhone/L=Lyon/O=Canut palancac inc./OU=Test expire/CN=www.palancac.fr" \
+  -addext "subjectAltName = DNS:www.palancac.fr, DNS:dev.palancac.fr"
+openssl req -new -key test.key -out client.csr.pem \
+  -subj "/C=FR/ST=Rhone/L=Lyon/O=Canut palancac inc./OU=Test client/CN=www.palancac.fr" \
+  -addext "subjectAltName = DNS:www.palancac.fr, DNS:dev.palancac.fr"
+openssl req -x509 -newkey rsa:2048 -nodes -keyout imposteur.key -out imposteur.cert.pem -days 30 \
+  -subj "/C=FR/ST=Rhone/L=Lyon/O=Canut palancac inc./CN=www.palancac.fr" \
+  -addext "subjectAltName = DNS:www.palancac.fr, DNS:dev.palancac.fr"
+```
+
+Les deux demandes ont été copiées-collées sur la CA, puis signées par `RA palancac`. Pour T6, `-startdate` et `-enddate` remplacent `-days` et fixent une période déjà écoulée. Pour T7, la section `usr_cert` remplace `server_cert` :
+
+```console
+[etudiant@tls-ca-palancac ca]$ openssl ca -config openssl.cnf -extensions server_cert -startdate 250101000000Z -enddate 250201000000Z \
+  -notext -md sha256 -in csr/expire.csr.pem -out certs/expire.cert.pem
+[...]
+        Serial Number: 4097 (0x1001)
+        Validity
+            Not Before: Jan  1 00:00:00 2025 GMT
+            Not After : Feb  1 00:00:00 2025 GMT
+[...]
+Certificate is to be certified until Feb  1 00:00:00 2025 GMT (-654 days)
+[...]
+[etudiant@tls-ca-palancac ca]$ openssl ca -config openssl.cnf -extensions usr_cert -days 30 \
+  -notext -md sha256 -in csr/client.csr.pem -out certs/client.cert.pem
+[...]
+        Serial Number: 4098 (0x1002)
+[...]
+            X509v3 Extended Key Usage:
+                TLS Web Client Authentication, E-mail Protection
+            X509v3 Subject Alternative Name:
+                DNS:www.palancac.fr, DNS:dev.palancac.fr
+[...]
+```
+
+Les signatures de ces deux certificats sont valides : seule la date (T6) ou l'usage (T7) les rend inutilisables pour un serveur. Une fois les certificats copiés sur le serveur, nous avons lancé les quatre serveurs de test en arrière-plan. Celui de T3 utilise le vrai certificat du serveur, mais sans l'intermédiaire (fichier `.seul`). Ceux de T6 et T7 envoient la chaîne complète (`-cert_chain`), pour que seul le point testé soit en défaut :
+
+```console
+[etudiant@tls-serv-palancac tests]$ S=~/tls-reverse/nginx-reverse/ssl
+[etudiant@tls-serv-palancac tests]$ sudo openssl s_server -accept 8443 -www -cert $S/serveur_http.cert.pem.seul -key $S/serveur_http.pem >/dev/null 2>&1 &
+[etudiant@tls-serv-palancac tests]$ openssl s_server -accept 8444 -www -cert imposteur.cert.pem -key imposteur.key >/dev/null 2>&1 &
+[etudiant@tls-serv-palancac tests]$ openssl s_server -accept 8445 -www -cert expire.cert.pem -key test.key -cert_chain ~/intermediate.cert.pem >/dev/null 2>&1 &
+[etudiant@tls-serv-palancac tests]$ openssl s_server -accept 8446 -www -cert client.cert.pem -key test.key -cert_chain ~/intermediate.cert.pem >/dev/null 2>&1 &
+[etudiant@tls-serv-palancac tests]$ ss -ltn | grep -E ':(443|844[3-6]) '
+LISTEN 0      4096         0.0.0.0:443       0.0.0.0:*
+LISTEN 0      4096               *:8443            *:*
+LISTEN 0      4096               *:8446            *:*
+LISTEN 0      4096               *:8445            *:*
+LISTEN 0      4096               *:8444            *:*
+LISTEN 0      4096            [::]:443          [::]:*
+```
+
+#### Résultats des tests T1 à T8
+
+Le client a été copié sur `tls-serv-palancac` (Python 3.12.9), dont le magasin de confiance contient `Root Lorne` :
+
+```console
+[etudiant@tls-serv-palancac tests]$ python3 ~/tests/client_tls.py
+[T1] Cas nominal : chaîne et nom valides  (www.palancac.fr -> 192.168.170.119:443, contexte systeme)
+     attendu : acceptée | obtenu : acceptée -> CONFORME
+     TLSv1.3 TLS_AES_256_GCM_SHA384 | sujet CN=www.palancac.fr | émetteur CN=RA palancac | SAN www.palancac.fr, dev.palancac.fr
+     réponse : HTTP/1.1 200 OK
+
+[T2] CA racine inconnue (magasin vide)  (www.palancac.fr -> 192.168.170.119:443, contexte vide)
+     attendu : refusée | obtenu : refusée -> CONFORME
+     refus : unable to get local issuer certificate (code 20)
+
+[T3] Chaîne incomplète (intermédiaire non envoyé)  (www.palancac.fr -> 192.168.170.119:8443, contexte systeme)
+     attendu : refusée | obtenu : refusée -> CONFORME
+     refus : unable to get local issuer certificate (code 20)
+
+[T4] Nom demandé absent du SAN  (palancac.fr -> 192.168.170.119:443, contexte systeme)
+     attendu : refusée | obtenu : refusée -> CONFORME
+     refus : Hostname mismatch, certificate is not valid for 'palancac.fr'. (code 62)
+
+[T5] Certificat auto-signé (imposteur)  (www.palancac.fr -> 192.168.170.119:8444, contexte systeme)
+     attendu : refusée | obtenu : refusée -> CONFORME
+     refus : self-signed certificate (code 18)
+
+[T6] Certificat expiré  (www.palancac.fr -> 192.168.170.119:8445, contexte systeme)
+     attendu : refusée | obtenu : refusée -> CONFORME
+     refus : certificate has expired (code 10)
+
+[T7] Certificat non prévu pour un serveur  (www.palancac.fr -> 192.168.170.119:8446, contexte systeme)
+     attendu : refusée | obtenu : refusée -> CONFORME
+     refus : unsuitable certificate purpose (code 26)
+
+[T8] Client qui ne vérifie rien, face à T5  (www.palancac.fr -> 192.168.170.119:8444, contexte aucune_verif)
+     attendu : acceptée | obtenu : acceptée -> CONFORME
+     TLSv1.3 TLS_AES_256_GCM_SHA384 | certificat reçu mais non vérifié
+     réponse : HTTP/1.0 200 ok
+
+Bilan : 8/8 tests conformes
+```
+
+| #  | Vérification testée               | Résultat obtenu                                 | Conforme |
+| -- | --------------------------------- | ----------------------------------------------- | -------- |
+| T1 | Authentification complète         | Acceptée, TLS 1.3, page `200 OK`                | Oui      |
+| T2 | Racine de confiance               | Refus, code 20                                  | Oui      |
+| T3 | Construction de la chaîne         | Refus, code 20                                  | Oui      |
+| T4 | Nom du serveur (SAN)              | Refus, code 62 `Hostname mismatch`              | Oui      |
+| T5 | Signature par une CA de confiance | Refus, code 18 `self-signed certificate`        | Oui      |
+| T6 | Période de validité               | Refus, code 10 `certificate has expired`        | Oui      |
+| T7 | Usage du certificat (EKU)         | Refus, code 26 `unsuitable certificate purpose` | Oui      |
+| T8 | Contre-exemple sans vérification  | Acceptée : l'imposteur n'est pas détecté        | Oui      |
+
+Le client effectue donc bien chacune des vérifications de la question 4 :
+
+- **T2 et T3** donnent la même erreur (code 20) pour deux causes différentes : en T2 le client ne connaît aucune racine, en T3 il connaît `Root Lorne` mais ne peut pas l'atteindre sans `RA palancac`. C'est la situation de la section 7.3.2 avant la concaténation de la chaîne.
+- **T4** montre qu'une chaîne valide ne suffit pas : le certificat doit aussi correspondre au nom demandé.
+- **T5** est l'attaque la plus réaliste : l'imposteur présente un certificat au bon nom (`CN=www.palancac.fr`, même SAN), mais signé par lui-même.
+- **T6 et T7** utilisent des certificats émis par notre propre CA, avec une chaîne complète : ils sont refusés uniquement à cause de leur date ou de leur usage (`clientAuth` au lieu de `serverAuth`).
+- **T8** montre que la connexion est chiffrée (TLS 1.3) même avec l'imposteur : le chiffrement seul ne garantit rien si le client n'authentifie pas le serveur. C'est le même danger que l'option `-k` de `curl` (section 7.3.1).
+
+#### T9 : vérification du chiffrement
+
+Nous avons capturé avec `tcpdump` le trafic des ports 443 et 80 pendant l'exécution de T1, puis cherché dans la capture des chaînes connues en clair : le texte de la page servie par `web1` (« servies par ») et l'organisation du certificat (« Canut »).
+
+```console
+[etudiant@tls-serv-palancac tests]$ sudo tcpdump -i any -U -s0 -w capture.pcap 'tcp port 443 or tcp port 80' >/dev/null 2>&1 &
+[etudiant@tls-serv-palancac tests]$ python3 client_tls.py T1; sudo pkill tcpdump
+[...]
+Bilan : 1/1 tests conformes
+[etudiant@tls-serv-palancac tests]$ sudo tcpdump -r capture.pcap -nn 'tcp port 443' 2>/dev/null | head -3
+14:06:51.482835 br-4141f9c1ce7a Out IP 192.168.170.119.52622 > 172.18.0.3.443: Flags [S], seq 2978217756, [...]
+14:06:51.482845 veth5a84e36 Out IP 192.168.170.119.52622 > 172.18.0.3.443: Flags [S], seq 2978217756, [...]
+14:06:51.482872 veth5a84e36 P   IP 172.18.0.3.443 > 192.168.170.119.52622: Flags [S.], seq 835385169, [...]
+[etudiant@tls-serv-palancac tests]$ sudo tcpdump -r capture.pcap -A 'tcp port 443' 2>/dev/null | grep -c "servies par"
+0
+[etudiant@tls-serv-palancac tests]$ sudo tcpdump -r capture.pcap -A 'tcp port 443' 2>/dev/null | grep -c "Canut"
+0
+[etudiant@tls-serv-palancac tests]$ sudo tcpdump -r capture.pcap -A 'tcp port 80' 2>/dev/null | grep -E "GET /|servies par"
+14:06:51.486547 veth5a84e36 P   IP 172.18.0.3.33624 > 172.18.0.4.http: Flags [P.], seq 1:50, [...] length 49: HTTP: GET / HTTP/1.0
+.GET / HTTP/1.0
+[...]
+L'URL / et toutes les URL autres que /admin/ sont servies par <b>web1</b>.
+```
+
+- **Sur le port 443, entre le client et Nginx, le contenu est chiffré.** Le texte de la page n'apparaît dans aucun paquet. Les paquets passent par le pont Docker (`br-…`, `172.18.0.3` est le conteneur `reverse`), car Docker redirige le port 443 de l'hôte vers le conteneur.
+- **Le nom du site, en revanche, circule en clair.** En relançant la recherche avec `-nn` (sans `-nn`, tcpdump remplace l'adresse `192.168.170.119` par `www.palancac.fr` grâce à `/etc/hosts`, ce qui fausse le comptage), on le trouve dans le premier paquet de données envoyé par le client, le `ClientHello` (`seq 1:1546`) :
+
+  ```console
+  [etudiant@tls-serv-palancac tests]$ sudo tcpdump -r capture.pcap -nn -A 'tcp port 443' 2>/dev/null | grep -c "www.palancac.fr"
+  2
+  [etudiant@tls-serv-palancac tests]$ sudo tcpdump -r capture.pcap -nn -A 'tcp port 443' 2>/dev/null | grep -B3 "www.palancac.fr" | head -4
+  14:06:51.483512 br-4141f9c1ce7a Out IP 192.168.170.119.52622 > 172.18.0.3.443: Flags [P.], seq 1:1546, ack 1, [...] length 1545
+  [...]
+  ...     .............k.g.9.3..................www.palancac.fr.........
+  ```
+
+  Les deux occurrences correspondent au même paquet, vu sur deux interfaces (le pont Docker et l'interface `veth` du conteneur). C'est l'extension **SNI** (question 4) : le client indique en clair le nom du site demandé, pour que le serveur choisisse le bon certificat. Un observateur du réseau sait donc à quel site le client se connecte, sans voir le contenu échangé.
+- **Le certificat lui-même n'est pas lisible.** « Canut », présent dans le sujet du certificat, n'apparaît pas. En TLS 1.3, le message `Certificate` est envoyé après l'échange de clés, et il est donc chiffré. En TLS 1.2, il passait en clair.
+- **Sur le port 80, le trafic est en clair.** On lit la requête `GET / HTTP/1.0` envoyée par Nginx (`172.18.0.3`) à `web1` (`172.18.0.4`), puis la page. C'est la **terminaison TLS** : la connexion n'est chiffrée qu'entre le client et le proxy, et les échanges avec les backends restent en HTTP dans le réseau Docker. Ce n'est acceptable que parce que ce réseau est interne à la machine.
+
+Le test T9 est donc conforme : les échanges entre le client et le serveur sont chiffrés.
 
 ---
 
 ## Conclusion
+
+Ce TP nous a permis de mettre en œuvre, de bout en bout, les mécanismes qui permettent à un client de faire confiance à un serveur HTTPS.
+
+- **Chiffrement asymétrique :** l'échange de messages avec Kylian a montré que RSA garantit la confidentialité, mais pas l'origine d'un message. Il n'y a aucune garantie que la clé publique reçue appartient bien à son propriétaire. Les certificats répondent à ce problème.
+- **Certificats X.509 :** l'analyse de la chaîne de l'université (section 5) puis la création de notre propre PKI (section 6) nous ont montré la même structure : une racine auto-signée, présente dans le magasin de confiance, une CA intermédiaire (`pathlen:0`) et un certificat de serveur (`CA:FALSE`, `serverAuth`, SAN). La confiance ne vient pas de la signature de la racine, mais de sa présence dans le magasin de confiance du client.
+- **Déploiement :** le reverse proxy Nginx assure la terminaison TLS. Un seul import, celui de `Root Lorne`, suffit pour que les clients acceptent le serveur, à condition que celui-ci envoie aussi le certificat de `RA palancac`, et que le nom demandé figure dans le SAN.
+- **Validation par le client :** les tests de la section 8 confirment que l'authentification repose sur plusieurs vérifications indépendantes : chaîne jusqu'à une racine de confiance, nom, période de validité et usage du certificat. Chacune peut faire échouer la connexion. Le test T8 montre qu'un client qui désactive ces vérifications reste chiffré, mais parle sans le savoir à un imposteur.
+
+Quelques limites de cette PKI de TP restent à noter :
+- la clé de la racine et le compte `camanager` sont partagés entre tous les étudiants ;
+- aucune CRL ni aucun serveur OCSP ne permet de révoquer un certificat (l'adresse `ocsp2.example.com` est fictive) ;
+- le nom du site reste visible en clair dans le SNI ;
+- le trafic entre le proxy et les backends n'est pas chiffré.
