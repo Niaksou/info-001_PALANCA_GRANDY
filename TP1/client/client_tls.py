@@ -8,8 +8,7 @@ import socket
 import ssl
 import sys
 
-IP = "192.168.170.119"      # adresse de tls-serv-palancac
-NOM = "www.palancac.fr"     # nom attendu dans le SAN du certificat
+NOM = "www.palancac.fr"     # nom du serveur, résolu par DNS / /etc/hosts
 
 # (id, objectif, port, nom demandé, contexte TLS, connexion attendue ?)
 TESTS = [
@@ -47,10 +46,15 @@ def cn(champ):
     return "?"
 
 
-def requete(port, nom, mode):
+def resoudre(nom):
+    """Résout le nom du serveur en adresse IP (DNS ou /etc/hosts)."""
+    return socket.gethostbyname(nom)
+
+
+def requete(ip, port, nom, mode):
     """Ouvre la connexion TLS, envoie un GET / et renvoie les informations de session."""
     ctx = contexte(mode)
-    with socket.create_connection((IP, port), timeout=5) as sock:
+    with socket.create_connection((ip, port), timeout=5) as sock:
         # server_hostname sert à la fois pour le SNI et pour la vérification du nom.
         with ctx.wrap_socket(sock, server_hostname=nom) as tls:
             tls.sendall(f"GET / HTTP/1.1\r\nHost: {nom}\r\nConnection: close\r\n\r\n".encode())
@@ -73,14 +77,20 @@ def requete(port, nom, mode):
 
 def main():
     choix = [t.upper() for t in sys.argv[1:]]
+    try:
+        # Le serveur est toujours celui de NOM ; le nom demandé dans le test
+        # (server_hostname) peut différer, comme dans T4.
+        ip = resoudre(NOM)
+    except socket.gaierror as e:
+        sys.exit(f"Impossible de résoudre {NOM} : {e}")
     conformes = total = 0
     for tid, objectif, port, nom, mode, attendu in TESTS:
         if choix and tid not in choix:
             continue
         total += 1
-        print(f"[{tid}] {objectif}  ({nom} -> {IP}:{port}, contexte {mode})")
+        print(f"[{tid}] {objectif}  ({nom} -> {ip}:{port}, contexte {mode})")
         try:
-            info, ligne = requete(port, nom, mode)
+            info, ligne = requete(ip, port, nom, mode)
             obtenu, detail = True, f"{info}\n     réponse : {ligne}"
         except ssl.SSLCertVerificationError as e:
             obtenu, detail = False, f"refus : {e.verify_message} (code {e.verify_code})"

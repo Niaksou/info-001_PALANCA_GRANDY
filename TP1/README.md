@@ -2416,7 +2416,7 @@ Le client utilise `ssl.create_default_context()`, qui reproduit le comportement 
 - il vérifie la chaîne de certificats (`verify_mode = CERT_REQUIRED`) ;
 - il vérifie que le nom demandé figure dans le SAN (`check_hostname = True`). Ce nom est passé dans `server_hostname`, qui sert aussi d'extension SNI.
 
-Le client se connecte toujours à l'adresse IP du serveur, et le nom demandé est fourni séparément. Nous pouvons ainsi tester un nom absent du certificat sans toucher au fichier `hosts`.
+Le client résout `www.palancac.fr` (fichier `/etc/hosts` de la section 7.3.2, ou DNS) pour obtenir l'adresse du serveur, et le nom demandé dans `server_hostname` est fourni séparément. Nous pouvons ainsi tester un nom absent du certificat (T4) sans toucher au fichier `hosts`.
 
 ### Question 27
 
